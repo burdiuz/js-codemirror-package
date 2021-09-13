@@ -1,22 +1,16 @@
 {
   "name": "@actualwave/codemirror-package",
   "version": "0.0.6",
-  "private": true,
   "main": "index.js",
   "scripts": {
-    "start": "gulp",
-    "postinstall": "gulp"
+    "start": "node start.js",
+    "postinstall": "node start.js"
   },
-  "dependencies": {
-    "codemirror": "^5.62.3"
-  },
+  "type": "module", 
   "devDependencies": {
-    "gulp": "^4.0.2",
-    "gulp-clean-css": "^4.3.0",
-    "gulp-if": "^3.0.0",
-    "gulp-inject": "^5.0.5",
-    "gulp-rename": "^2.0.0",
-    "gulp-uglify": "^3.0.2",
-    "gulp-util": "^3.0.8"
+    "@actualwave/babel-ioc-dep-wrap-plugin": "https://github.com/burdiuz/babel-ioc-dep-wrap-plugin.git",
+    "@babel/core": "^7.15.5",
+    "@types/node": "^16.9.1",
+    "babel-preset-minify": "^0.5.1"
   }
 }

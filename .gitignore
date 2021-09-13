@@ -1,6 +1,5 @@
-.idea/
-.history/
-.vscode/
-.atom/
-node_modules/
 assets/
+codemirror.next/
+intermediate/
+node_modules/
+.*/
