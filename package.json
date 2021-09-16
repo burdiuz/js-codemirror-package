@@ -4,8 +4,8 @@
   "private": true,
   "main": "index.js",
   "scripts": {
-    "start": "gulp",
-    "postinstall": "gulp"
+    "start": "npx gulp",
+    "postinstall": "npx gulp"
   },
   "dependencies": {
     "codemirror": "^5.62.3"
