@@ -8,7 +8,7 @@
   },
   "type": "module", 
   "devDependencies": {
-    "@actualwave/babel-ioc-dep-wrap-plugin": "https://github.com/burdiuz/babel-ioc-dep-wrap-plugin.git",
+    "@actualwave/babel-ioc-dep-wrap-plugin": "burdiuz/babel-ioc-dep-wrap-plugin#0.0.2",
     "@babel/core": "^7.15.5",
     "@types/node": "^16.9.1",
     "babel-preset-minify": "^0.5.1"

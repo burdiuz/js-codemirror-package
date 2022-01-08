@@ -2,7 +2,7 @@ import { resolve, basename, extname } from 'path';
 import { stat, rm, mkdir, readdir, readFile, writeFile } from 'fs/promises';
 import { spawn } from 'child_process';
 import babel from '@babel/core';
-import { wrapWithGeneratorFn } from '@actualwave/babel-ioc-dep-wrap-plugin';
+import { wrapWithAsyncFn, wrapWithGeneratorFn } from '@actualwave/babel-ioc-dep-wrap-plugin';
 
 const INTERMEDIATE_FOLDER = resolve(process.cwd(), 'intermediate');
 const SOURCES_FOLDER = resolve(process.cwd(), 'codemirror.next');
@@ -35,7 +35,7 @@ const runThrough = (cmd, args, options, done = () => null) => {
 const convertModuleFile = async (moduleFile, moduleName) => {
   const fileContent = await readFile(moduleFile, { encoding: 'utf8' });
   const { code } = babel.transformSync(fileContent, {
-    plugins: [wrapWithGeneratorFn()],
+    plugins: [wrapWithAsyncFn()],
     presets: [
       [
         'minify',

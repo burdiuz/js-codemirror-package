@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <title>CodeMirror Async Module Example</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+  <script>
+    const moduleCache = new Map();
+    let moduleMap;
+
+    const asyncRequire = async (moduleName, exports) => fetch(`./modules/${encodeURIComponent(moduleMap[moduleName])}.js`)
+      .then((response) => response.text())
+      .then((code) => {
+        eval(code);
+
+        return moduleInitFunction(require, exports);
+      });
+
+    const require = (moduleName) => {
+      if (moduleCache.has(moduleName)) {
+        return moduleCache.get(moduleName);
+      }
+
+      const exports = {};
+
+      /**
+       * This helps to resolve circular dependencies.
+       * We return module exports early and fill it when it is ready.
+       * This way it won't block loading other modules.
+       */
+      moduleCache.set(moduleName, exports);
+
+      return asyncRequire(moduleName, exports);
+    };
+
+    const loadModuleMap = () => fetch('./modules.json').then((response) => response.json()).then((data) => {
+      moduleMap = data;
+    });
+  </script>
+</head>
+
+<body>
+</body>
+<script>
+  (async () => {
+    // load module mappings
+    await loadModuleMap();
+
+    const { EditorState, EditorView, basicSetup } = await require('@codemirror/basic-setup');
+    const { javascript, javascriptLanguage } = await require('@codemirror/lang-javascript');
+    const exp = await require('@codemirror/autocomplete');
+    console.log(exp);
+    const { completeFromList } = exp;
+
+    const keywords =
+      "break case catch class const continue debugger default delete do else enum export extends false finally for function if implements import interface in instanceof let new package private protected public return static super switch this throw true try typeof var void while with yield"
+        .split(" ")
+        .map((kw) => ({ label: kw, type: "keyword" }));
+
+    const globals = Object.getOwnPropertyNames(window).map((p) => {
+      return {
+        label: p,
+        type: /^[A-Z]/.test(p)
+          ? "class"
+          : typeof window[p] == "function"
+            ? "function"
+            : "variable",
+      };
+    });
+
+    let jsCompletion = completeFromList([...keywords, ...globals]);
+    let state = EditorState.create({
+      doc: `function hello(who = "world") {
+  console.log(\`Hello, \${who}!\`)
+}`,
+      extensions: [
+        basicSetup,
+        javascript(),
+        javascriptLanguage.data.of({ autocomplete: jsCompletion }),
+      ],
+    });
+    window.view = new EditorView({
+      state,
+      parent: document.body,
+    });
+  })()
+</script>
+
+</html>

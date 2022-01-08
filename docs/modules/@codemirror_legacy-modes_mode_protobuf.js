@@ -1,0 +1,7 @@
+async function moduleInitFunction(require,exports={}){Object.defineProperty(exports,"__esModule",{value:!0});var keywordArray=["package","message","import","syntax","required","optional","repeated","reserved","default","extensions","packed","bool","bytes","double","enum","float","string","int32","int64","uint32","uint64","sint32","sint64","fixed32","fixed64","sfixed32","sfixed64","option","service","rpc","returns"],keywords=function(words){return new RegExp("^(("+words.join(")|(")+"))\\b","i")}(keywordArray);return exports.protobuf={token:function(stream){// whitespaces
+if(stream.eatSpace())return null;// Handle one line Comments
+if(stream.match("//"))return stream.skipToEnd(),"comment";// Handle Number Literals
+if(stream.match(/^[0-9\.+-]/,!1)){if(stream.match(/^[+-]?0x[0-9a-fA-F]+/))return"number";if(stream.match(/^[+-]?\d*\.\d+([EeDd][+-]?\d+)?/))return"number";if(stream.match(/^[+-]?\d+([EeDd][+-]?\d+)?/))return"number"}// Handle Strings
+return stream.match(/^"([^"]|(""))*"/)?"string":stream.match(/^'([^']|(''))*'/)?"string":stream.match(keywords)?"keyword":stream.match(/^[_A-Za-z¡-￿][_A-Za-z0-9¡-￿]*/)?"variable":(stream.next(),null);// Handle words
+// Handle non-detected items
+},languageData:{autocomplete:keywordArray}},exports}
