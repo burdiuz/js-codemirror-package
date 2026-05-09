@@ -1,171 +1,240 @@
 import { resolve, basename, extname } from 'path';
-import { stat, rm, mkdir, readdir, readFile, writeFile } from 'fs/promises';
-import { spawn } from 'child_process';
+import { rm, mkdir, readdir, readFile, writeFile, copyFile } from 'fs/promises';
 import babel from '@babel/core';
-import { wrapWithAsyncFn, wrapWithGeneratorFn } from '@actualwave/babel-ioc-dep-wrap-plugin';
+import { wrapWithAsyncFn } from '@actualwave/babel-ioc-dep-wrap-plugin';
 
-const INTERMEDIATE_FOLDER = resolve(process.cwd(), 'intermediate');
-const SOURCES_FOLDER = resolve(process.cwd(), 'codemirror.next');
-const SOURCE_DEPS_FOLDER = resolve(SOURCES_FOLDER, 'node_modules');
-const SOURCES_REPO = 'https://github.com/codemirror/codemirror.next.git';
-const EXCLUDES = ['bin', 'node_modules', 'demo'];
+const DIST_FOLDER = resolve(process.cwd(), 'dist');
+const DIST_CODEMIRROR_FOLDER = resolve(process.cwd(), 'dist/codemirror');
+const DOCS_FOLDER = resolve(process.cwd(), 'docs');
+const DOCS_CODEMIRROR_FOLDER = resolve(process.cwd(), 'docs/codemirror');
+const NODE_MODULES = resolve(process.cwd(), 'node_modules');
 
-const runThrough = (cmd, args, options, done = () => null) => {
-  console.log('>----------------------------------- running command');
-  console.log('::', cmd, args.join(' '));
-  const promise = new Promise((res, rej) => {
-    const cb = spawn(cmd, args, options);
-    cb.stdout.on('data', (data) => console.log(String(data)));
-    cb.stderr.on('data', (data) => console.error(String(data)));
-    cb.on('error', (error) => rej(error));
-    cb.on('close', (code) => {
-      if (code) {
-        rej(`Child Process "${cmd}" exited with code ${code}.`);
-      } else {
-        res(code);
-      }
-    });
-  });
+// These packages are bundled together into a single loadable unit.
+// Order matters: each entry must only depend on packages listed before it.
+const CORE_PACKAGES = [
+  'crelt',
+  'style-mod',
+  'w3c-keyname',
+  '@marijn/find-cluster-break',
+  '@lezer/common',
+  '@lezer/highlight',
+  '@lezer/lr',
+  '@codemirror/state',
+  '@codemirror/view',
+  '@codemirror/language',
+  '@codemirror/commands',
+  '@codemirror/autocomplete',
+  '@codemirror/search',
+  '@codemirror/lint',
+];
 
-  promise.then(done); // callback execution should not affect returned promise.
+// Each of these is a separate loadable module.
+// Lezer parsers are listed before the lang packages that depend on them.
+const SEPARATE_PACKAGES = [
+  // codemirror meta-package (provides basicSetup, re-exports core)
+  'codemirror',
 
-  return promise;
-};
+  // optional codemirror extensions
+  '@codemirror/collab',
+  '@codemirror/language-data',
+  '@codemirror/merge',
+  '@codemirror/theme-one-dark',
 
-const convertModuleFile = async (moduleFile, moduleName) => {
+  // lezer parsers (deps of lang packages below)
+  '@lezer/css',
+  '@lezer/go',
+  '@lezer/html',
+  '@lezer/java',
+  '@lezer/javascript',
+  '@lezer/json',
+  '@lezer/cpp',
+  '@lezer/lezer',
+  '@lezer/markdown',
+  '@lezer/php',
+  '@lezer/python',
+  '@lezer/rust',
+  '@lezer/sass',
+  '@lezer/xml',
+  '@lezer/yaml',
+
+  // language packages
+  '@codemirror/lang-angular',
+  '@codemirror/lang-cpp',
+  '@codemirror/lang-css',
+  '@codemirror/lang-go',
+  '@codemirror/lang-html',
+  '@codemirror/lang-java',
+  '@codemirror/lang-javascript',
+  '@codemirror/lang-jinja',
+  '@codemirror/lang-json',
+  '@codemirror/lang-less',
+  '@codemirror/lang-lezer',
+  '@codemirror/lang-liquid',
+  '@codemirror/lang-markdown',
+  '@codemirror/lang-php',
+  '@codemirror/lang-python',
+  '@codemirror/lang-rust',
+  '@codemirror/lang-sass',
+  '@codemirror/lang-sql',
+  '@codemirror/lang-vue',
+  '@codemirror/lang-wast',
+  '@codemirror/lang-xml',
+  '@codemirror/lang-yaml',
+];
+
+const toIntermediateName = (packageName) => packageName.replace(/\//g, '_');
+
+const convertModuleFile = async (moduleFile, intermediateName) => {
   const fileContent = await readFile(moduleFile, { encoding: 'utf8' });
   const { code } = babel.transformSync(fileContent, {
-    plugins: [wrapWithAsyncFn()],
+    plugins: [wrapWithAsyncFn(false, { hoistNestedRequires: true, requireName: 'requireAsyncModule' })],
     presets: [
       [
         'minify',
         {
           builtIns: false,
-          mangle: false, // removing this causes babel-minify error https://github.com/babel/minify/issues/556
+          mangle: false,
         },
       ],
     ],
   });
 
-  await writeFile(resolve(INTERMEDIATE_FOLDER, `${moduleName}.js`), code);
+  await writeFile(resolve(DIST_CODEMIRROR_FOLDER, `${intermediateName}.js`), code);
 };
 
-const prepareModule = async (path, modules, intermediates) => {
-  let moduleName;
-  let moduleFile;
-
-  try {
-    const packageJson = JSON.parse(
-      await readFile(resolve(path, 'package.json')),
-    );
-    const {
-      name,
-      main,
-      exports: { require: requireFile } = {},
-      dependencies = {},
-    } = packageJson;
-    moduleName = name;
-    moduleFile = resolve(path, requireFile || main || 'index.js');
-
-    if(intermediates[moduleName]) {
-      return { modules, intermediates };
-    }
-
-    modules = [
-      ...modules,
-      ...Object.keys(dependencies).map((name) =>
-        resolve(SOURCE_DEPS_FOLDER, name),
-      ),
-    ];
-  } catch (error) {
-    return { modules, intermediates };
-  }
-
-  try {
-    const moduleStats = await stat(moduleFile);
-
-    if (moduleStats.isFile()) {
-      const intermediateFile = moduleName.replace(/[\\\/]/, '_');
-      await convertModuleFile(moduleFile, intermediateFile);
-      intermediates = {
-        ...intermediates,
-        [moduleName]: intermediateFile,
-      };
-    }
-  } catch (error) {
-    console.error(moduleFile);
-    console.error(error.message);
-  }
-
-  return { modules, intermediates };
+const resolvePackageEntry = async (packageName) => {
+  const pkgPath = resolve(NODE_MODULES, packageName);
+  const packageJson = JSON.parse(
+    await readFile(resolve(pkgPath, 'package.json')),
+  );
+  const { main, exports: { require: requireFile } = {} } = packageJson;
+  return resolve(pkgPath, requireFile || main || 'index.cjs');
 };
 
-// main execution flow
+const processPackage = async (packageName) => {
+  const intermediateName = toIntermediateName(packageName);
+  try {
+    const entryFile = await resolvePackageEntry(packageName);
+    await convertModuleFile(entryFile, intermediateName);
+    return intermediateName;
+  } catch (error) {
+    console.error(`  Failed: ${packageName} — ${error.message}`);
+    return null;
+  }
+};
+
 (async () => {
   try {
-    await stat(INTERMEDIATE_FOLDER);
-    await rm(INTERMEDIATE_FOLDER, { recursive: true });
-  } catch (error) {}
+    await rm(DIST_FOLDER, { recursive: true });
+  } catch {}
+  await mkdir(DIST_FOLDER);
+  await mkdir(DIST_CODEMIRROR_FOLDER);
 
-  await mkdir(INTERMEDIATE_FOLDER);
+  const intermediates = {};
 
-  try {
-    await stat(SOURCES_FOLDER);
-  } catch (error) {
-    await runThrough(`git`, ['clone', SOURCES_REPO]);
-  }
-
-  try {
-    await stat(SOURCE_DEPS_FOLDER);
-  } catch (error) {
-    await runThrough('node', ['bin/cm.js', 'install'], {
-      cwd: SOURCES_FOLDER,
-    });
-  }
-
-  let intermediates = {};
-  let modules = await readdir(SOURCES_FOLDER);
-  modules = modules
-    .filter((name) => name.charAt() !== '.' && !EXCLUDES.includes(name))
-    .map((name) => resolve(SOURCES_FOLDER, name));
-
-  for (let index = 0; index < modules.length; index++) {
-    const path = modules[index];
-    const stats = await stat(path);
-
-    if (!stats.isDirectory()) {
-      continue;
-    }
-
-    ({ modules, intermediates } = await prepareModule(
-      path,
-      modules,
-      intermediates,
-    ));
-  }
-
-  // legacy modes case
-  const legacyModesPath = resolve(SOURCES_FOLDER, 'legacy-modes/mode');
-  const legacyStats = await stat(legacyModesPath);
-
-  if (legacyStats.isDirectory()) {
-    const legacyModules = await readdir(legacyModesPath);
-    for (let name of legacyModules) {
-      if (extname(name) != '.cjs') {
-        continue;
-      }
-
-      const fileName = basename(name, '.cjs');
-      const intermediateName = `@codemirror_legacy-modes_mode_${fileName}`;
-
-      await convertModuleFile(resolve(legacyModesPath, name), intermediateName);
-      intermediates[`@codemirror/legacy-modes/mode/${fileName}`] =
-        intermediateName;
+  console.log('Processing core packages...');
+  for (const name of CORE_PACKAGES) {
+    process.stdout.write(`  ${name} ... `);
+    const intermediateName = await processPackage(name);
+    if (intermediateName) {
+      intermediates[name] = { file: intermediateName, core: true };
+      console.log('ok');
     }
   }
 
-  await writeFile(
-    resolve(INTERMEDIATE_FOLDER, '.modules.json'),
-    JSON.stringify(intermediates, null, 2),
+  console.log('Processing separate packages...');
+  for (const name of SEPARATE_PACKAGES) {
+    process.stdout.write(`  ${name} ... `);
+    const intermediateName = await processPackage(name);
+    if (intermediateName) {
+      intermediates[name] = { file: intermediateName };
+      console.log('ok');
+    }
+  }
+
+  console.log('Processing legacy modes...');
+  const legacyModesPath = resolve(NODE_MODULES, '@codemirror/legacy-modes/mode');
+  const legacyModeFiles = await readdir(legacyModesPath);
+  for (const fileName of legacyModeFiles) {
+    if (extname(fileName) !== '.cjs') continue;
+    const modeName = basename(fileName, '.cjs');
+    const packageName = `@codemirror/legacy-modes/mode/${modeName}`;
+    const intermediateName = toIntermediateName(packageName);
+    process.stdout.write(`  ${packageName} ... `);
+    try {
+      await convertModuleFile(resolve(legacyModesPath, fileName), intermediateName);
+      intermediates[packageName] = { file: intermediateName };
+      console.log('ok');
+    } catch (error) {
+      console.error(`failed — ${error.message}`);
+    }
+  }
+
+  console.log('Generating core bundle...');
+  const coreNames = CORE_PACKAGES.filter((name) => intermediates[name]);
+  let bundleCode = '';
+  const initFnNames = [];
+
+  for (const name of coreNames) {
+    const initFnName = `_coreInit_${name.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    initFnNames.push({ name, initFnName });
+    const code = await readFile(resolve(DIST_CODEMIRROR_FOLDER, `${intermediates[name].file}.js`), 'utf8');
+    bundleCode += code.replace('async function moduleInitFunction', `async function ${initFnName}`) + '\n';
+  }
+
+  const initCalls = initFnNames
+    .map(({ name, initFnName }) => `  r[${JSON.stringify(name)}]=await ${initFnName}(_req,{});`)
+    .join('\n');
+
+  bundleCode += `async function moduleInitFunction(_g){const r={};const _req=(n)=>{if(Object.prototype.hasOwnProperty.call(r,n))return r[n];return _g(n);};\n${initCalls}\nreturn r;}`;
+
+  await writeFile(resolve(DIST_CODEMIRROR_FOLDER, '_core.js'), bundleCode);
+
+  for (const name of coreNames) {
+    intermediates[name].bundle = '_core';
+  }
+
+  await writeFile(resolve(DIST_FOLDER, 'modules.json'), JSON.stringify(intermediates, null, 2));
+
+  // Inject module map into requireAsyncModule.js and write to dist/
+  const loaderSource = await readFile(resolve(process.cwd(), 'requireAsyncModule.js'), 'utf8');
+  const loaderWithMap = loaderSource.replace(
+    'export const modules = null;',
+    `export const modules = ${JSON.stringify(intermediates)};`,
   );
+  await writeFile(resolve(DIST_FOLDER, 'requireAsyncModule.js'), loaderWithMap);
+
+  // Copy index.js to dist/ with the import path adjusted for dist layout
+  const indexSource = await readFile(resolve(process.cwd(), 'index.js'), 'utf8');
+  const indexDist = indexSource.replace(
+    "'./dist/requireAsyncModule.js'",
+    "'./requireAsyncModule.js'",
+  );
+  await writeFile(resolve(DIST_FOLDER, 'index.js'), indexDist);
+
+  console.log('\nUpdating docs...');
+  await rm(DOCS_CODEMIRROR_FOLDER, { recursive: true }).catch(() => {});
+  await mkdir(DOCS_CODEMIRROR_FOLDER, { recursive: true });
+
+  const codemirrorFiles = await readdir(DIST_CODEMIRROR_FOLDER);
+  for (const fileName of codemirrorFiles) {
+    if (extname(fileName) === '.js') {
+      await copyFile(
+        resolve(DIST_CODEMIRROR_FOLDER, fileName),
+        resolve(DOCS_CODEMIRROR_FOLDER, fileName),
+      );
+    }
+  }
+  await copyFile(
+    resolve(DIST_FOLDER, 'requireAsyncModule.js'),
+    resolve(DOCS_FOLDER, 'requireAsyncModule.js'),
+  );
+  await copyFile(
+    resolve(DIST_FOLDER, 'index.js'),
+    resolve(DOCS_FOLDER, 'index.js'),
+  );
+
+  const total = Object.keys(intermediates).length;
+  const coreCount = CORE_PACKAGES.length;
+  console.log(`Done. ${total} modules processed (${coreCount} core, ${total - coreCount} separate).`);
 })();

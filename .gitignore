@@ -2,4 +2,6 @@ assets/
 codemirror.next/
 intermediate/
 node_modules/
-.*/
+dist/
+.history/
+.*/.rollup-serve.js
