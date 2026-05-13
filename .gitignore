@@ -5,3 +5,4 @@ node_modules/
 dist/
 .history/
 .*/.rollup-serve.js
+.rollup-serve.js
