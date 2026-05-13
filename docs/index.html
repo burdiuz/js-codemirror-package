@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>CodeMirror Async Module Example</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      .cm-editor {
+        height: 100%;
+      }
+
+      .cm-scroller {
+        overflow: auto;
+      }
+    </style>
+  </head>
+
+  <body></body>
+  <script type="module">
+    import { createEditor } from './index.js';
+
+    window.editor = await createEditor({
+      parent: document.body,
+      doc: `function hello(who = "world") {\n  console.log(\`Hello, \${who}!\`)\n}`,
+      language: 'javascript',
+      extensions: ['@codemirror/autocomplete', ['@uiw/codemirror-theme-github', 'githubDark']],
+    });
+  </script>
+</html>
