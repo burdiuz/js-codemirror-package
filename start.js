@@ -1,15 +1,25 @@
-import { resolve, basename, extname, isAbsolute } from 'path';
+import { resolve, dirname, basename, extname, isAbsolute } from 'path';
+import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 import { rm, mkdir, readdir, readFile, writeFile, copyFile } from 'fs/promises';
 import babel from '@babel/core';
 import { wrapWithAsyncFn } from '@actualwave/babel-ioc-dep-wrap-plugin';
 import { rollup } from 'rollup';
 import commonjs from '@rollup/plugin-commonjs';
 
-const DIST_FOLDER = resolve(process.cwd(), 'dist');
-const DIST_CODEMIRROR_FOLDER = resolve(process.cwd(), 'dist/codemirror');
-const DOCS_FOLDER = resolve(process.cwd(), 'docs');
-const DOCS_CODEMIRROR_FOLDER = resolve(process.cwd(), 'docs/codemirror');
-const NODE_MODULES = resolve(process.cwd(), 'node_modules');
+// __dirname for this file — used for output paths so they are always relative
+// to start.js regardless of what cwd is when the script runs.
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Use Node's standard upward module resolution so packages installed in a
+// parent node_modules (e.g. when this runs as postinstall in a consumer
+// project) are found correctly.
+const _require = createRequire(import.meta.url);
+
+const DIST_FOLDER = resolve(__dirname, 'dist');
+const DIST_CODEMIRROR_FOLDER = resolve(__dirname, 'dist/codemirror');
+const DOCS_FOLDER = resolve(__dirname, 'docs');
+const DOCS_CODEMIRROR_FOLDER = resolve(__dirname, 'docs/codemirror');
 
 // These packages are bundled together into a single loadable unit.
 // Order matters: each entry must only depend on packages listed before it.
@@ -154,15 +164,15 @@ const convertModuleFile = async (moduleFile, intermediateName) => {
 };
 
 const resolvePackageEntry = async (packageName) => {
-  const pkgPath = resolve(NODE_MODULES, packageName);
   try {
-    const packageJson = JSON.parse(await readFile(resolve(pkgPath, 'package.json')));
+    const pkgJsonPath = _require.resolve(`${packageName}/package.json`);
+    const packageJson = JSON.parse(await readFile(pkgJsonPath));
     const { main, exports: { require: requireFile } = {} } = packageJson;
-    return resolve(pkgPath, requireFile || main || 'index.cjs');
+    return resolve(dirname(pkgJsonPath), requireFile || main || 'index.cjs');
   } catch {
     // Sub-path import (e.g. @babel/runtime/helpers/interopRequireDefault) —
-    // no package.json, resolve directly as a .js file.
-    return pkgPath + '.js';
+    // no package.json export; let Node resolve it directly as a .js file.
+    return _require.resolve(packageName);
   }
 };
 
@@ -208,7 +218,10 @@ const processPackage = async (packageName) => {
   }
 
   console.log('Processing legacy modes...');
-  const legacyModesPath = resolve(NODE_MODULES, '@codemirror/legacy-modes/mode');
+  const legacyModesPath = resolve(
+    dirname(_require.resolve('@codemirror/legacy-modes/package.json')),
+    'mode',
+  );
   const legacyModeFiles = await readdir(legacyModesPath);
   for (const fileName of legacyModeFiles) {
     if (extname(fileName) !== '.cjs') continue;

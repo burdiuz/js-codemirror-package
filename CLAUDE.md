@@ -112,6 +112,20 @@ Key design decisions:
 - `@babel/runtime` must be in `dependencies` (not devDependencies) so it is installed in
   consumer projects when `postinstall` runs.
 
+### Package resolution when installed as a dependency
+
+When npm runs `postinstall`, `cwd` is the package's own directory
+(`consumer/node_modules/@actualwave/codemirror-package/`). Using
+`resolve(process.cwd(), 'node_modules')` would look for packages in
+`consumer/node_modules/@actualwave/codemirror-package/node_modules/`, but
+npm hoists all dependencies to `consumer/node_modules/`.
+
+**Fix**: `start.js` uses `createRequire(import.meta.url)` to resolve package
+locations. Node's standard upward-search algorithm finds hoisted packages
+wherever npm placed them. Output paths (`dist/`, `docs/`) use
+`dirname(fileURLToPath(import.meta.url))` so they always resolve relative to
+`start.js`, not `cwd`.
+
 ### Why build tools are in `dependencies` (not `devDependencies`)
 
 `postinstall` runs in the **consumer project** after `npm install`. At that point only
