@@ -1,7 +1,9 @@
-import { resolve, basename, extname } from 'path';
+import { resolve, basename, extname, isAbsolute } from 'path';
 import { rm, mkdir, readdir, readFile, writeFile, copyFile } from 'fs/promises';
 import babel from '@babel/core';
 import { wrapWithAsyncFn } from '@actualwave/babel-ioc-dep-wrap-plugin';
+import { rollup } from 'rollup';
+import commonjs from '@rollup/plugin-commonjs';
 
 const DIST_FOLDER = resolve(process.cwd(), 'dist');
 const DIST_CODEMIRROR_FOLDER = resolve(process.cwd(), 'dist/codemirror');
@@ -39,6 +41,29 @@ const SEPARATE_PACKAGES = [
   '@codemirror/language-data',
   '@codemirror/merge',
   '@codemirror/theme-one-dark',
+
+  // @uiw community themes (shared base must come before individual themes)
+  '@uiw/codemirror-themes',
+  '@uiw/codemirror-theme-androidstudio',
+  '@uiw/codemirror-theme-andromeda',
+  '@uiw/codemirror-theme-atomone',
+  '@uiw/codemirror-theme-aura',
+  '@uiw/codemirror-theme-basic',
+  '@uiw/codemirror-theme-bbedit',
+  '@uiw/codemirror-theme-copilot',
+  '@uiw/codemirror-theme-darcula',
+  '@uiw/codemirror-theme-dracula',
+  '@uiw/codemirror-theme-duotone',
+  '@uiw/codemirror-theme-eclipse',
+  '@uiw/codemirror-theme-github',
+  '@uiw/codemirror-theme-material',
+  '@uiw/codemirror-theme-monokai',
+  '@uiw/codemirror-theme-nord',
+  '@uiw/codemirror-theme-okaidia',
+  '@uiw/codemirror-theme-solarized',
+  '@uiw/codemirror-theme-sublime',
+  '@uiw/codemirror-theme-vscode',
+  '@uiw/codemirror-theme-xcode',
 
   // lezer parsers (deps of lang packages below)
   '@lezer/css',
@@ -84,10 +109,36 @@ const SEPARATE_PACKAGES = [
 
 const toIntermediateName = (packageName) => packageName.replace(/\//g, '_');
 
+// Pre-bundle a CJS package entry into a single file, inlining all relative
+// requires. Non-relative requires (npm packages) remain as external require()
+// calls so the babel IoC transform can convert them to requireAsyncModule().
+const bundleToSingleFile = async (entryFile) => {
+  const bundle = await rollup({
+    input: entryFile,
+    plugins: [commonjs()],
+    external: (id) => !id.startsWith('.') && !isAbsolute(id),
+    onwarn: () => {},
+  });
+  const { output } = await bundle.generate({ format: 'cjs', exports: 'auto' });
+  await bundle.close();
+  let code = output[0].code;
+  // Rollup's getDefaultExportFromCjs unwraps __esModule modules to just their
+  // default export, losing named exports like createTheme. Replace it with an
+  // identity so the full CJS exports object is preserved and requireAsyncModule
+  // returns { createTheme, default, ... } instead of just createTheme.
+  code = code.replace(
+    /function getDefaultExportFromCjs\s*\([^)]*\)\s*\{[^}]+\}/,
+    'function getDefaultExportFromCjs(x){return x}',
+  );
+  return code;
+};
+
 const convertModuleFile = async (moduleFile, intermediateName) => {
-  const fileContent = await readFile(moduleFile, { encoding: 'utf8' });
+  const fileContent = await bundleToSingleFile(moduleFile);
   const { code } = babel.transformSync(fileContent, {
-    plugins: [wrapWithAsyncFn(false, { hoistNestedRequires: true, requireName: 'requireAsyncModule' })],
+    plugins: [
+      wrapWithAsyncFn(false, { hoistNestedRequires: true, requireName: 'requireAsyncModule' }),
+    ],
     presets: [
       [
         'minify',
@@ -104,11 +155,15 @@ const convertModuleFile = async (moduleFile, intermediateName) => {
 
 const resolvePackageEntry = async (packageName) => {
   const pkgPath = resolve(NODE_MODULES, packageName);
-  const packageJson = JSON.parse(
-    await readFile(resolve(pkgPath, 'package.json')),
-  );
-  const { main, exports: { require: requireFile } = {} } = packageJson;
-  return resolve(pkgPath, requireFile || main || 'index.cjs');
+  try {
+    const packageJson = JSON.parse(await readFile(resolve(pkgPath, 'package.json')));
+    const { main, exports: { require: requireFile } = {} } = packageJson;
+    return resolve(pkgPath, requireFile || main || 'index.cjs');
+  } catch {
+    // Sub-path import (e.g. @babel/runtime/helpers/interopRequireDefault) —
+    // no package.json, resolve directly as a .js file.
+    return pkgPath + '.js';
+  }
 };
 
 const processPackage = async (packageName) => {
@@ -170,6 +225,33 @@ const processPackage = async (packageName) => {
     }
   }
 
+  // Iteratively resolve any transitive deps (e.g. @babel/runtime helpers) that
+  // were required by built files but not listed in SEPARATE_PACKAGES.
+  let missingFound = true;
+  while (missingFound) {
+    missingFound = false;
+    const missing = new Set();
+    for (const fileName of await readdir(DIST_CODEMIRROR_FOLDER)) {
+      if (extname(fileName) !== '.js' || fileName === '_core.js') continue;
+      const code = await readFile(resolve(DIST_CODEMIRROR_FOLDER, fileName), 'utf8');
+      for (const [, name] of code.matchAll(/requireAsyncModule\(["']([^"']+)["']\)/g)) {
+        if (!intermediates[name]) missing.add(name);
+      }
+    }
+    if (missing.size > 0) {
+      missingFound = true;
+      console.log(`Resolving ${missing.size} missing transitive dependencies...`);
+      for (const name of [...missing].sort()) {
+        process.stdout.write(`  ${name} ... `);
+        const intermediateName = await processPackage(name);
+        if (intermediateName) {
+          intermediates[name] = { file: intermediateName };
+          console.log('ok');
+        }
+      }
+    }
+  }
+
   console.log('Generating core bundle...');
   const coreNames = CORE_PACKAGES.filter((name) => intermediates[name]);
   let bundleCode = '';
@@ -178,8 +260,12 @@ const processPackage = async (packageName) => {
   for (const name of coreNames) {
     const initFnName = `_coreInit_${name.replace(/[^a-zA-Z0-9]/g, '_')}`;
     initFnNames.push({ name, initFnName });
-    const code = await readFile(resolve(DIST_CODEMIRROR_FOLDER, `${intermediates[name].file}.js`), 'utf8');
-    bundleCode += code.replace('async function moduleInitFunction', `async function ${initFnName}`) + '\n';
+    const code = await readFile(
+      resolve(DIST_CODEMIRROR_FOLDER, `${intermediates[name].file}.js`),
+      'utf8',
+    );
+    bundleCode +=
+      code.replace('async function moduleInitFunction', `async function ${initFnName}`) + '\n';
   }
 
   const initCalls = initFnNames
@@ -204,13 +290,8 @@ const processPackage = async (packageName) => {
   );
   await writeFile(resolve(DIST_FOLDER, 'requireAsyncModule.js'), loaderWithMap);
 
-  // Copy index.js to dist/ with the import path adjusted for dist layout
-  const indexSource = await readFile(resolve(process.cwd(), 'index.js'), 'utf8');
-  const indexDist = indexSource.replace(
-    "'./dist/requireAsyncModule.js'",
-    "'./requireAsyncModule.js'",
-  );
-  await writeFile(resolve(DIST_FOLDER, 'index.js'), indexDist);
+  // Copy index.js to dist/
+  await copyFile(resolve(process.cwd(), 'index.js'), resolve(DIST_FOLDER, 'index.js'));
 
   console.log('\nUpdating docs...');
   await rm(DOCS_CODEMIRROR_FOLDER, { recursive: true }).catch(() => {});
@@ -229,12 +310,11 @@ const processPackage = async (packageName) => {
     resolve(DIST_FOLDER, 'requireAsyncModule.js'),
     resolve(DOCS_FOLDER, 'requireAsyncModule.js'),
   );
-  await copyFile(
-    resolve(DIST_FOLDER, 'index.js'),
-    resolve(DOCS_FOLDER, 'index.js'),
-  );
+  await copyFile(resolve(DIST_FOLDER, 'index.js'), resolve(DOCS_FOLDER, 'index.js'));
 
   const total = Object.keys(intermediates).length;
   const coreCount = CORE_PACKAGES.length;
-  console.log(`Done. ${total} modules processed (${coreCount} core, ${total - coreCount} separate).`);
+  console.log(
+    `Done. ${total} modules processed (${coreCount} core, ${total - coreCount} separate).`,
+  );
 })();

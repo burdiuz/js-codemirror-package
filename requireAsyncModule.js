@@ -73,7 +73,14 @@ async function _asyncLoad(moduleName, moduleExports) {
   }
   const code = await _loader(_baseUrl + info.file + '.js');
   const moduleInitFunction = eval(code + ';moduleInitFunction');
-  return moduleInitFunction(requireAsyncModule, moduleExports);
+  const result = await moduleInitFunction(requireAsyncModule, moduleExports);
+  // If the module replaced module.exports entirely (e.g. rollup CJS interop
+  // assigns the default export), copy named exports back into the cached stub
+  // so both existing stub references and future cache hits get the full object.
+  if (result !== moduleExports && result instanceof Object) {
+    Object.assign(moduleExports, result);
+  }
+  return moduleExports;
 }
 
 /**

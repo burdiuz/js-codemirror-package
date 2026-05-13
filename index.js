@@ -1,4 +1,4 @@
-import { requireAsyncModule, configure } from './dist/requireAsyncModule.js';
+import { requireAsyncModule, configure } from './requireAsyncModule.js';
 
 export { requireAsyncModule, configure };
 
@@ -30,21 +30,29 @@ export function registerExtension(moduleName, resolver) {
  * Resolves an extension spec into a CodeMirror Extension value.
  *
  * Accepted forms:
- *   - string               → package name; loaded and resolved via extensionResolvers
- *   - [string, options]    → package name + options object passed to the resolver
- *   - anything else        → returned as-is (already a CM Extension)
+ *   - string                    → package name; loaded and resolved via extensionResolvers
+ *   - [string, string]          → [packageName, exportName]; loads module, returns mod[exportName]
+ *   - [string, object|undefined]→ package name + options object passed to the resolver
+ *   - anything else             → returned as-is (already a CM Extension)
  */
 async function resolveExtensionSpec(spec) {
   if (typeof spec !== 'string' && !(Array.isArray(spec) && typeof spec[0] === 'string')) {
     return spec;
   }
-  const [moduleName, options] = Array.isArray(spec) ? spec : [spec, undefined];
+  const [moduleName, second] = Array.isArray(spec) ? spec : [spec, undefined];
+
+  // [moduleName, 'exportName'] — return a named export directly (e.g. themes)
+  if (typeof second === 'string') {
+    const mod = await requireAsyncModule(moduleName);
+    return mod[second];
+  }
+
   const resolver = extensionResolvers.get(moduleName);
   if (!resolver) {
     throw new Error(`No extension resolver for "${moduleName}". Call registerExtension() to add one.`);
   }
   const mod = await requireAsyncModule(moduleName);
-  return resolver(mod, options);
+  return resolver(mod, second);
 }
 
 /**
