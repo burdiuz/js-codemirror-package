@@ -1,6 +1,6 @@
 # @actualwave/codemirror-package
 
-Support package for the [ReactNative CodeEditor](https://github.com/burdiuz/react-native-codeditor) component. Packages all CodeMirror 6 modules into individually loadable JS files so they can be lazily fetched into a WebView on demand, avoiding the cost of shipping everything up front.
+Support package for the [ReactNative CodeEditor](https://github.com/burdiuz/react-native-codeditor) component. Packages all [CodeMirror 6](https://codemirror.net/) modules into individually loadable JS files so they can be lazily fetched into a WebView on demand, avoiding the cost of shipping everything up front.
 
 A live demo is deployed as a [GitHub Page for this repo](https://burdiuz.github.io/js-codemirror-package/).
 
@@ -102,10 +102,22 @@ Each entry in `extensions` (and in `setExtensions`) may be:
 | Form | Example | Behaviour |
 |------|---------|-----------|
 | Package name string | `'@codemirror/autocomplete'` | Loaded and resolved via the built-in registry |
-| `[packageName, options]` | `['@codemirror/search', { top: true }]` | Same, with options forwarded to the resolver |
+| `[packageName, exportName]` | `['@uiw/codemirror-theme-nord', 'nord']` | `mod[exportName]` returned directly — use for themes and named exports |
+| `[packageName, options]` | `['@codemirror/search', { top: true }]` | Resolver called with options; must be registered in the extension registry |
 | CM Extension object | `myExtension` | Passed through as-is |
 
 Built-in registry covers: `@codemirror/autocomplete`, `@codemirror/search`, `@codemirror/lint`, `@codemirror/collab`, `@codemirror/theme-one-dark`.
+
+**Note on `@uiw` themes**: each theme lives in its own package (`@uiw/codemirror-theme-{name}`), not the meta-package `@uiw/codemirror-themes`. Use the `[packageName, exportName]` form. Two themes use non-obvious export names: `github` → `githubDark`, `vscode` → `vscodeDark`.
+
+```js
+// ✓ correct
+['@uiw/codemirror-theme-darcula', 'darcula']
+['@uiw/codemirror-theme-github',  'githubDark']
+
+// ✗ wrong — meta-package only exports createTheme, not individual themes
+['@uiw/codemirror-themes', 'darcula']
+```
 
 ---
 
@@ -161,6 +173,105 @@ Legacy CodeMirror modes from `@codemirror/legacy-modes` are also available via `
 
 ```js
 const { clike } = await requireAsyncModule('@codemirror/legacy-modes/mode/clike');
+```
+
+---
+
+## Android WebView / React Native usage
+
+Several Android WebView constraints require special handling when hosting the editor in React Native.
+
+### Use plain `<script>` tags, not ES modules
+
+`<script type="module">` causes silent failures in Android WebView when an imported file is
+missing — the page just stops loading with no `window.onerror`. Use plain `<script>` tags and
+IIFE bundles instead so errors are caught and surfaced:
+
+```html
+<!-- ✗ ES modules — silent failures on Android WebView -->
+<script type="module" src="requireAsyncModule.js"></script>
+<script type="module">import { createEditor } from './index.js';</script>
+
+<!-- ✓ IIFE bundles — errors reported via window.onerror -->
+<script src="./codemirror-editor.umd.js"></script>
+<script>
+(async () => {
+  const { configure, createEditor } = window.CodeMirrorEditor;
+  configure({ baseUrl: './codemirror/' });
+  const editor = await createEditor({ ... });
+})();
+</script>
+```
+
+[react-native-codeditor](https://github.com/burdiuz/react-native-codeditor) ships a pre-built
+`codemirror-editor.umd.js` IIFE bundle generated from this package.
+
+### Use XHR instead of `fetch` for `file://` origins
+
+Android WebView blocks `fetch()` for `file://` origins even for same-origin requests. Use XHR
+instead — status `0` means success for `file://`:
+
+```js
+configure({
+  loader: (url) => new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', url);
+    xhr.onload = () => {
+      if (xhr.status === 0 || (xhr.status >= 200 && xhr.status < 300)) {
+        resolve(xhr.responseText);
+      } else {
+        reject(new Error('HTTP ' + xhr.status + ': ' + url));
+      }
+    };
+    xhr.onerror = () => reject(new Error('XHR failed: ' + url));
+    xhr.send();
+  }),
+});
+```
+
+### Disable EditContext for Chrome 147+ WebView compatibility
+
+CM6 v6.42+ automatically enables the [EditContext API](https://developer.chrome.com/docs/web-platform/editcontext/)
+on Android Chrome 126+. Chrome 147 has a race condition in its WebView EditContext implementation:
+successive IME `textupdate` events arrive faster than CM6 can sync back, causing characters to
+appear after the cursor during fast typing.
+
+Set `EditorView.EDIT_CONTEXT = false` **after** the CM6 modules have loaded (so the flag is set on
+the real class, not a module stub) and **before** `new EditorView()` is called:
+
+```js
+const [{ EditorView }, ...] = await Promise.all([
+  requireAsyncModule('@codemirror/view'),
+  // ...
+]);
+
+// Must be set on the resolved class, not before requireAsyncModule loads _core.js
+EditorView.EDIT_CONTEXT = false;
+
+const view = new EditorView({ ... });
+```
+
+This falls back to the `contenteditable` + MutationObserver path, which is stable at any typing
+speed as long as `drawSelection()` is also omitted (see below).
+
+### Omit `drawSelection()` for Android IME
+
+CM6's `drawSelection()` replaces the native browser cursor with a custom overlay. Android's IME
+tracks the native cursor to know where to insert text — hiding it causes characters to appear after
+the cursor instead of advancing it.
+
+Use a custom setup that omits `drawSelection()` rather than `basicSetup`:
+
+```js
+const { EditorView, lineNumbers, keymap, /* ... */ } = await requireAsyncModule('@codemirror/view');
+
+// basicSetup without drawSelection()
+const mobileSetup = [
+  lineNumbers(),
+  history(),
+  // drawSelection(), ← intentionally omitted
+  // ... all other basicSetup extensions
+];
 ```
 
 ---

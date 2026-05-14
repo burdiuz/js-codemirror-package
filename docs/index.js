@@ -90,10 +90,61 @@ export async function createEditor({
   extensions = [],
   onChange,
 } = {}) {
-  const [{ basicSetup, EditorView }, { EditorState, Compartment }] = await Promise.all([
-    requireAsyncModule('codemirror'),
+  const [
+    { EditorView, lineNumbers, highlightActiveLineGutter, highlightSpecialChars,
+      dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, keymap },
+    { EditorState, Compartment },
+    { history, defaultKeymap, historyKeymap },
+    { foldGutter, indentOnInput, syntaxHighlighting, defaultHighlightStyle, bracketMatching, foldKeymap },
+    { closeBrackets, autocompletion, closeBracketsKeymap, completionKeymap },
+    { highlightSelectionMatches, searchKeymap },
+    { lintKeymap },
+  ] = await Promise.all([
+    requireAsyncModule('@codemirror/view'),
     requireAsyncModule('@codemirror/state'),
+    requireAsyncModule('@codemirror/commands'),
+    requireAsyncModule('@codemirror/language'),
+    requireAsyncModule('@codemirror/autocomplete'),
+    requireAsyncModule('@codemirror/search'),
+    requireAsyncModule('@codemirror/lint'),
   ]);
+
+  // Chrome 126+ WebView uses the EditContext API for IME input. On Chrome 147 there is a
+  // race condition where successive textupdate events arrive faster than CM6 can sync back
+  // via editContext.updateText/updateSelection, causing characters to appear after the cursor.
+  // Disabling EditContext makes CM6 fall back to the contenteditable MutationObserver path,
+  // which is stable for fast typing when drawSelection() is omitted (native cursor stays visible).
+  EditorView.EDIT_CONTEXT = false;
+
+  // basicSetup without drawSelection() — drawSelection() hides the native browser cursor,
+  // which breaks Android IME composition (ghost text and cursor not advancing when typing fast).
+  const mobileSetup = [
+    lineNumbers(),
+    highlightActiveLineGutter(),
+    highlightSpecialChars(),
+    history(),
+    foldGutter(),
+    dropCursor(),
+    EditorState.allowMultipleSelections.of(true),
+    indentOnInput(),
+    syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+    bracketMatching(),
+    closeBrackets(),
+    autocompletion(),
+    rectangularSelection(),
+    crosshairCursor(),
+    highlightActiveLine(),
+    highlightSelectionMatches(),
+    keymap.of([
+      ...closeBracketsKeymap,
+      ...defaultKeymap,
+      ...searchKeymap,
+      ...historyKeymap,
+      ...foldKeymap,
+      ...completionKeymap,
+      ...lintKeymap,
+    ]),
+  ];
 
   // Separate Compartments allow language and extensions to be swapped independently
   // after the editor is created without rebuilding the entire editor state.
@@ -106,7 +157,7 @@ export async function createEditor({
   ]);
 
   const builtinExtensions = [
-    basicSetup,
+    mobileSetup,
     languageCompartment.of(langExt),
     extensionCompartment.of(resolvedExtensions),
   ];
