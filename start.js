@@ -72,6 +72,7 @@ const SEPARATE_PACKAGES = [
   '@uiw/codemirror-theme-okaidia',
   '@uiw/codemirror-theme-solarized',
   '@uiw/codemirror-theme-sublime',
+  '@uiw/codemirror-theme-tokyo-night',
   '@uiw/codemirror-theme-vscode',
   '@uiw/codemirror-theme-xcode',
 
