@@ -116,6 +116,9 @@ const SEPARATE_PACKAGES = [
   '@codemirror/lang-wast',
   '@codemirror/lang-xml',
   '@codemirror/lang-yaml',
+
+  // custom language packages
+  '@actualwave/codemirror-lang-sksl',
 ];
 
 const toIntermediateName = (packageName) => packageName.replace(/\//g, '_');

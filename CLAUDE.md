@@ -126,7 +126,25 @@ wherever npm placed them. Output paths (`dist/`, `docs/`) use
 `dirname(fileURLToPath(import.meta.url))` so they always resolve relative to
 `start.js`, not `cwd`.
 
-### Why build tools are in `dependencies` (not `devDependencies`)
+### Publishing model — pre-built assets, no postinstall
+
+The package is published with pre-built files already in `docs/`. All build
+tools and codemirror packages live in `devDependencies`. There is no
+`postinstall` script.
+
+Reasons:
+1. No overhead — consumers install nothing except the built assets.
+2. Sealed versions — the exact working combination of codemirror packages is
+   frozen at publish time; no upstream update can silently break consumers.
+3. No supply-chain risk from lifecycle scripts running arbitrary code on install.
+4. Local/unpublished deps (like `@actualwave/codemirror-lang-sksl`) work fine
+   because their built output is already embedded in `docs/codemirror/`.
+
+The `files` field in `package.json` publishes only `docs/`, `index.js`, and
+`requireAsyncModule.js`. To release a new version: run `npm run build`, bump
+the version, then `npm publish`.
+
+### Why build tools were previously in `dependencies` (postinstall era)
 
 `postinstall` runs in the **consumer project** after `npm install`. At that point only
 `dependencies` are installed. So `@babel/core`, `@actualwave/babel-ioc-dep-wrap-plugin`,

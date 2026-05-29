@@ -56,15 +56,72 @@ async function resolveExtensionSpec(spec) {
 }
 
 /**
- * Resolves a language name to a CodeMirror language extension by loading
- * @codemirror/lang-{name}. The exported function is located by matching the
- * name key first, then by scanning for the first exported function.
+ * Registry mapping language name → npm package name for packages that don't
+ * follow the @codemirror/lang-{name} convention. Pre-populated with known
+ * custom language packages bundled in this distribution.
+ */
+const languagePackages = new Map([
+  ['sksl', '@actualwave/codemirror-lang-sksl'],
+]);
+
+/**
+ * Register a custom language package that doesn't follow the
+ * @codemirror/lang-{name} convention.
+ *
+ * @param {string} name - Language name used in createEditor({ language }).
+ * @param {string} packageName - npm package name to load.
+ */
+export function registerLanguage(name, packageName) {
+  languagePackages.set(name, packageName);
+}
+
+/**
+ * Extracts a StreamParser mode object from a legacy-modes module.
+ * Tries exact match first, then case-insensitive, then single-export fallback
+ * (handles mismatches like coffeescript→coffeeScript, simple-mode→simpleMode).
+ */
+function findLegacyMode(mod, name) {
+  const isMode = (v) => v && typeof v === 'object' && !Array.isArray(v);
+  const skip = new Set(['__esModule', 'default']);
+  if (isMode(mod[name])) return mod[name];
+  const lname = name.toLowerCase();
+  for (const [k, v] of Object.entries(mod)) {
+    if (!skip.has(k) && k.toLowerCase() === lname && isMode(v)) return v;
+  }
+  const modes = Object.entries(mod).filter(([k, v]) => !skip.has(k) && isMode(v));
+  return modes.length === 1 ? modes[0][1] : null;
+}
+
+/**
+ * Resolves a language name to a CodeMirror language extension.
+ * Resolution order:
+ *   1. Custom registry (registerLanguage / built-in overrides like sksl)
+ *   2. @codemirror/lang-{name}  (official first-class language packages)
+ *   3. @codemirror/legacy-modes/mode/{name}  (wrapped with StreamLanguage.define)
  */
 async function resolveLanguageExtension(name) {
-  const mod = await requireAsyncModule(`@codemirror/lang-${name}`);
-  const fn = mod[name] ?? Object.values(mod).find((v) => typeof v === 'function');
-  if (!fn) throw new Error(`No language function found in @codemirror/lang-${name}`);
-  return fn();
+  if (languagePackages.has(name)) {
+    const mod = await requireAsyncModule(languagePackages.get(name));
+    const fn = mod[name] ?? Object.values(mod).find((v) => typeof v === 'function');
+    if (fn) return fn();
+  }
+
+  try {
+    const mod = await requireAsyncModule(`@codemirror/lang-${name}`);
+    const fn = mod[name] ?? Object.values(mod).find((v) => typeof v === 'function');
+    if (fn) return fn();
+  } catch {}
+
+  try {
+    const [legacyMod, { StreamLanguage }] = await Promise.all([
+      requireAsyncModule(`@codemirror/legacy-modes/mode/${name}`),
+      requireAsyncModule('@codemirror/language'),
+    ]);
+    const mode = findLegacyMode(legacyMod, name);
+    if (mode) return StreamLanguage.define(mode);
+  } catch {}
+
+  throw new Error(`No language support found for "${name}". Use registerLanguage() for custom packages.`);
 }
 
 /**
@@ -75,7 +132,7 @@ async function resolveLanguageExtension(name) {
  * @param {Element}  [options.parent=document.body] - DOM element to mount the editor into.
  * @param {string}   [options.doc='']               - Initial document content.
  * @param {string}   [options.language]             - Language name, e.g. 'javascript', 'python'.
- *   Loads @codemirror/lang-{name} on demand.
+ *   Tries @codemirror/lang-{name} first, then @codemirror/legacy-modes/mode/{name}.
  * @param {Array}    [options.extensions=[]]        - Extension specs. Each item may be:
  *   a package-name string, a [packageName, options] tuple, or an already-built CM Extension.
  * @param {(value: string) => void} [options.onChange] - Called with the full document string
