@@ -30,6 +30,13 @@ export function configure({ baseUrl, loader } = {}) {
 // Stubs ({}) are inserted before loading begins so circular dependencies get the same reference.
 const moduleCache = new Map();
 
+// Tracks stubs that are still being populated (loading in progress).
+const _pendingStubs = new Set();
+
+// In-flight load Promises keyed by package name. Concurrent external callers for the
+// same module await this Promise to get fully populated exports rather than the empty stub.
+const _loadingPromises = new Map();
+
 // Singleton promise for the core bundle load. All 14 core packages share one fetch.
 let _coreBundlePromise = null;
 
@@ -93,8 +100,19 @@ async function _asyncLoad(moduleName, moduleExports) {
  * @returns {object|Promise<object>} Cached exports (sync) or a Promise resolving to exports.
  */
 export function requireAsyncModule(moduleName) {
-  if (moduleCache.has(moduleName)) return moduleCache.get(moduleName);
+  if (moduleCache.has(moduleName)) {
+    const cached = moduleCache.get(moduleName);
+    if (_pendingStubs.has(cached)) return _loadingPromises.get(moduleName);
+    return cached;
+  }
   const moduleExports = {};
+  _pendingStubs.add(moduleExports);
   moduleCache.set(moduleName, moduleExports);
-  return _asyncLoad(moduleName, moduleExports);
+  const promise = _asyncLoad(moduleName, moduleExports).then((result) => {
+    _pendingStubs.delete(moduleExports);
+    _loadingPromises.delete(moduleName);
+    return result;
+  });
+  _loadingPromises.set(moduleName, promise);
+  return promise;
 }
