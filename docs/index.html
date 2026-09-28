@@ -29,6 +29,7 @@
       parent: document.body,
       doc: `function hello(who = "world") {\n  console.log(\`Hello, \${who}!\`)\n}`,
       language: 'javascript',
+      languageConfig: { jsx: true, typescript: true },
       extensions: ['@codemirror/autocomplete', ['@uiw/codemirror-theme-github', 'githubDark']],
     });
   </script>

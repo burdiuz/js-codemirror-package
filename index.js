@@ -98,18 +98,23 @@ function findLegacyMode(mod, name) {
  *   1. Custom registry (registerLanguage / built-in overrides like sksl)
  *   2. @codemirror/lang-{name}  (official first-class language packages)
  *   3. @codemirror/legacy-modes/mode/{name}  (wrapped with StreamLanguage.define)
+ *
+ * @param {string} name
+ * @param {object} [config] - Passed as the sole argument to the resolved factory function
+ *   (e.g. { jsx: true, typescript: true } for 'javascript'). Ignored by the legacy-modes
+ *   fallback, since those export StreamParser objects rather than factory functions.
  */
-async function resolveLanguageExtension(name) {
+async function resolveLanguageExtension(name, config) {
   if (languagePackages.has(name)) {
     const mod = await requireAsyncModule(languagePackages.get(name));
     const fn = mod[name] ?? Object.values(mod).find((v) => typeof v === 'function');
-    if (fn) return fn();
+    if (fn) return fn(config);
   }
 
   try {
     const mod = await requireAsyncModule(`@codemirror/lang-${name}`);
     const fn = mod[name] ?? Object.values(mod).find((v) => typeof v === 'function');
-    if (fn) return fn();
+    if (fn) return fn(config);
   } catch {}
 
   try {
@@ -133,6 +138,8 @@ async function resolveLanguageExtension(name) {
  * @param {string}   [options.doc='']               - Initial document content.
  * @param {string}   [options.language]             - Language name, e.g. 'javascript', 'python'.
  *   Tries @codemirror/lang-{name} first, then @codemirror/legacy-modes/mode/{name}.
+ * @param {object}   [options.languageConfig]       - Options passed to the language factory,
+ *   e.g. { jsx: true, typescript: true } for 'javascript'.
  * @param {Array}    [options.extensions=[]]        - Extension specs. Each item may be:
  *   a package-name string, a [packageName, options] tuple, or an already-built CM Extension.
  * @param {(value: string) => void} [options.onChange] - Called with the full document string
@@ -144,6 +151,7 @@ export async function createEditor({
   parent = document.body,
   doc = '',
   language,
+  languageConfig,
   extensions = [],
   onChange,
 } = {}) {
@@ -209,7 +217,7 @@ export async function createEditor({
   const extensionCompartment = new Compartment();
 
   const [langExt, resolvedExtensions] = await Promise.all([
-    language ? resolveLanguageExtension(language) : Promise.resolve([]),
+    language ? resolveLanguageExtension(language, languageConfig) : Promise.resolve([]),
     Promise.all(extensions.map(resolveExtensionSpec)),
   ]);
 
@@ -254,9 +262,12 @@ export async function createEditor({
     /**
      * Switches the active language. Loads @codemirror/lang-{name} on demand.
      * @param {string} name - Language name, e.g. 'python', 'css'.
+     * @param {object} [config] - Options passed to the language factory, e.g.
+     *   { jsx: true, typescript: true } for 'javascript'. Must be plain serializable
+     *   data — it crosses the WebView bridge as a postMessage payload.
      */
-    async setLanguage(name) {
-      const ext = await resolveLanguageExtension(name);
+    async setLanguage(name, config) {
+      const ext = await resolveLanguageExtension(name, config);
       view.dispatch({ effects: languageCompartment.reconfigure(ext) });
     },
 

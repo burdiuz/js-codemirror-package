@@ -52,6 +52,7 @@ The HTML page is loaded inside the WebView. It imports the facade, creates the e
     parent: document.body,
     doc: '',
     language: 'javascript',
+    languageConfig: { jsx: true, typescript: true },
     extensions: ['@codemirror/autocomplete'],
     onChange(value) {
       window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'change', value }));
@@ -100,6 +101,7 @@ configure({
 | `parent` | `Element` | `document.body` | Mount target |
 | `doc` | `string` | `''` | Initial content |
 | `language` | `string` | — | e.g. `'javascript'`, `'python'`. Loads `@codemirror/lang-{name}` on demand |
+| `languageConfig` | `object` | — | Passed as the sole argument to the resolved language factory, e.g. `{ jsx: true, typescript: true }` for `'javascript'`. Ignored by languages resolved via the legacy-modes fallback. |
 | `extensions` | `Array` | `[]` | Extension specs (see Extension Specs below) |
 | `onChange` | `(value: string) => void` | — | Called on every document change |
 
@@ -146,6 +148,13 @@ inject(`window.editor.setLanguage('python');`);
 // async — loads @codemirror/lang-python on first call
 ```
 
+**Switch language with config:**
+```js
+inject(`window.editor.setLanguage('javascript', { jsx: true, typescript: true });`);
+// second arg is passed as the sole argument to the language factory (e.g. javascript())
+// must be plain serializable data — it crosses the WebView bridge as injected JS / postMessage
+```
+
 **Toggle extensions:**
 ```js
 inject(`window.editor.setExtensions(['@codemirror/theme-one-dark', '@codemirror/autocomplete']);`);
@@ -163,7 +172,7 @@ inject(`window.editor.destroy();`);
 |--------|---------|-------------|
 | `getValue()` | `string` | Current document content |
 | `setValue(value)` | — | Replace entire document |
-| `setLanguage(name)` | `Promise` | Swap language; loads module on demand |
+| `setLanguage(name, config?)` | `Promise` | Swap language; loads module on demand. `config` is passed to the language factory, e.g. `{ jsx: true, typescript: true }` for `'javascript'` |
 | `setExtensions(specs)` | `Promise` | Replace active extensions |
 | `loadExtension(moduleName)` | `Promise<object>` | Load module, return raw exports |
 | `destroy()` | — | Destroy editor and remove from DOM |
@@ -192,6 +201,8 @@ registerExtension('@my/theme', (mod, options) => mod.myTheme(options));
 Pass any of these to `language` / `setLanguage`:
 
 `angular` `cpp` `css` `go` `html` `java` `javascript` `jinja` `json` `less` `lezer` `liquid` `markdown` `php` `python` `rust` `sass` `sql` `vue` `wast` `xml` `yaml`
+
+Most of these factories take no arguments (`cpp`, `css`, `go`, `java`, `json`, `less`, `lezer`, `python`, `rust`, `wast`, `yaml`). The rest accept an optional config object via `languageConfig` / the second `setLanguage` argument: `angular`, `html`, `javascript` (`{ jsx, typescript }`), `jinja`, `liquid`, `markdown`, `php`, `sass`, `sql` (`SQLConfig`), `vue`, `xml` (`XMLConfig`). Check the installed package's own types for the exact shape — this list is the packages currently bundled, not a guarantee for future versions.
 
 Legacy modes via `loadExtension`:
 ```js
