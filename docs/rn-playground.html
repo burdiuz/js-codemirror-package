@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>CodeMirror React Native Playground Example</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      .cm-editor {
+        height: 100%;
+      }
+
+      .cm-scroller {
+        overflow: auto;
+      }
+    </style>
+  </head>
+
+  <body></body>
+  <script type="module">
+    import { createEditor } from './index.js';
+
+    const doc = `import { useState, useEffect } from 'react';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
+
+const sql = (s, ...v) => String.raw({ raw: s }, ...v);
+const css = sql;
+const styled = { View: (s, ...v) => String.raw({ raw: s }, ...v) };
+
+// Try: place the cursor after "use" on a new line to see hook completion,
+// or type "<Pre" inside the JSX below to see tag-name completion, or place
+// the cursor inside <Pressable |> to see its prop list (only props of
+// components actually imported above are ever suggested).
+export default function Counter() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    console.log('count changed', count);
+  }, [count]);
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.label}>Count: {count}</Text>
+      <Pressable onPress={() => setCount((c) => c + 1)} style={styles.button}>
+        <Text>Increment</Text>
+      </Pressable>
+      <ExpoImage source={{ uri: 'https://example.com/avatar.png' }} style={styles.avatar} />
+    </View>
+  );
+}
+
+const cardStyle = css\`
+  color: #e2e8f0;
+  padding: 12px;
+\`;
+
+const styles = StyleSheet.create({
+  container: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  label: { fontSize: 18 },
+  button: { padding: 8 },
+  avatar: { width: 48, height: 48 },
+});
+`;
+
+    window.editor = await createEditor({
+      parent: document.body,
+      doc,
+      language: 'javascript',
+      languageConfig: { jsx: true, typescript: true },
+      extensions: ['@codemirror/autocomplete', ['@uiw/codemirror-theme-github', 'githubDark']],
+    });
+  </script>
+</html>

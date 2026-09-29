@@ -117,8 +117,28 @@ const SEPARATE_PACKAGES = [
   '@codemirror/lang-xml',
   '@codemirror/lang-yaml',
 
+  // graphql grammar (dep of embed-graphql below)
+  'cm6-graphql',
+
   // custom language packages
   '@actualwave/codemirror-lang-sksl',
+  '@actualwave/codemirror-lang-glsl',
+  '@actualwave/codemirror-lang-icu-messageformat',
+  '@actualwave/codemirror-lang-react-native',
+
+  // tagged-template DSL embedding — embed-core first (shared parseMixed/
+  // registry machinery), then the DSL packages that depend on it
+  '@actualwave/codemirror-lang-embed-core',
+  '@actualwave/codemirror-lang-embed-sql',
+  '@actualwave/codemirror-lang-embed-graphql',
+  '@actualwave/codemirror-lang-embed-css',
+  '@actualwave/codemirror-lang-embed-sksl',
+  '@actualwave/codemirror-lang-embed-glsl',
+  '@actualwave/codemirror-lang-embed-icu-messageformat',
+
+  // support-extension DSLs (completion/decoration, no nested grammar)
+  '@actualwave/codemirror-lang-embed-tailwind',
+  '@actualwave/codemirror-lang-embed-react-native',
 ];
 
 const toIntermediateName = (packageName) => packageName.replace(/\//g, '_');

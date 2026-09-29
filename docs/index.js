@@ -62,6 +62,8 @@ async function resolveExtensionSpec(spec) {
  */
 const languagePackages = new Map([
   ['sksl', '@actualwave/codemirror-lang-sksl'],
+  ['glsl', '@actualwave/codemirror-lang-glsl'],
+  ['icu', '@actualwave/codemirror-lang-icu-messageformat'],
 ]);
 
 /**
@@ -73,6 +75,58 @@ const languagePackages = new Map([
  */
 export function registerLanguage(name, packageName) {
   languagePackages.set(name, packageName);
+}
+
+/**
+ * Packages providing tagged-template DSL embeddings for the 'javascript'
+ * language (see SINGLE_FILE_PROTOTYPES.md in react-native-playground). Each
+ * package must export `createEmbedding() => { matcher, language }` — see
+ * @actualwave/codemirror-lang-embed-core.
+ */
+const taggedTemplateEmbeddings = new Set([
+  '@actualwave/codemirror-lang-embed-sql',
+  '@actualwave/codemirror-lang-embed-graphql',
+  '@actualwave/codemirror-lang-embed-css',
+  '@actualwave/codemirror-lang-embed-sksl',
+  '@actualwave/codemirror-lang-embed-glsl',
+  '@actualwave/codemirror-lang-embed-icu-messageformat',
+]);
+
+/**
+ * Registers an additional tagged-template DSL embedding package to be mixed
+ * into the 'javascript' language (e.g. a future embed-glsl/embed-icu package).
+ *
+ * @param {string} packageName - npm package name exporting createEmbedding().
+ */
+export function registerTaggedTemplate(packageName) {
+  taggedTemplateEmbeddings.add(packageName);
+}
+
+/**
+ * Packages contributing plain CM extensions (completion sources, decoration
+ * ViewPlugins, etc) to the 'javascript' language's support set, for DSLs with
+ * no grammar to parse — e.g. Tailwind/twrnc class names inside `` tw`...` ``,
+ * which are a flat token list rather than a `parseMixed` nested language (see
+ * SINGLE_FILE_PROTOTYPES.md / TODO.md item 6). Each package must export
+ * `createSupportExtension(jsLanguageSupport, config?) => Extension`. Keyed by
+ * package name → its config (or `undefined`), registered once up front rather
+ * than threaded through every createEditor() call, matching how
+ * registerTaggedTemplate works.
+ */
+const javascriptSupportExtensions = new Map([
+  ['@actualwave/codemirror-lang-embed-tailwind', undefined],
+  ['@actualwave/codemirror-lang-embed-react-native', undefined],
+]);
+
+/**
+ * Registers an additional package contributing support extensions (not a
+ * nested grammar) to the 'javascript' language.
+ *
+ * @param {string} packageName - npm package name exporting createSupportExtension().
+ * @param {object} [config] - Passed as createSupportExtension's second argument.
+ */
+export function registerJavascriptSupport(packageName, config) {
+  javascriptSupportExtensions.set(packageName, config);
 }
 
 /**
@@ -96,8 +150,11 @@ function findLegacyMode(mod, name) {
  * Resolves a language name to a CodeMirror language extension.
  * Resolution order:
  *   1. Custom registry (registerLanguage / built-in overrides like sksl)
- *   2. @codemirror/lang-{name}  (official first-class language packages)
- *   3. @codemirror/legacy-modes/mode/{name}  (wrapped with StreamLanguage.define)
+ *   2. 'javascript' special case — wraps @codemirror/lang-javascript with
+ *      tagged-template DSL embedding (sql/gql/css/styled.* — see
+ *      registerTaggedTemplate)
+ *   3. @codemirror/lang-{name}  (official first-class language packages)
+ *   4. @codemirror/legacy-modes/mode/{name}  (wrapped with StreamLanguage.define)
  *
  * @param {string} name
  * @param {object} [config] - Passed as the sole argument to the resolved factory function
@@ -109,6 +166,34 @@ async function resolveLanguageExtension(name, config) {
     const mod = await requireAsyncModule(languagePackages.get(name));
     const fn = mod[name] ?? Object.values(mod).find((v) => typeof v === 'function');
     if (fn) return fn(config);
+  }
+
+  if (name === 'javascript') {
+    const [jsMod, embedCore, { LanguageSupport }] = await Promise.all([
+      requireAsyncModule('@codemirror/lang-javascript'),
+      requireAsyncModule('@actualwave/codemirror-lang-embed-core'),
+      requireAsyncModule('@codemirror/language'),
+    ]);
+    const base = jsMod.javascript(config);
+    const registry = embedCore.createTagRegistry();
+    const extras = [];
+    for (const packageName of taggedTemplateEmbeddings) {
+      try {
+        const { createEmbedding } = await requireAsyncModule(packageName);
+        const { matcher, language, extension } = createEmbedding();
+        registry.register(matcher, language);
+        if (extension) extras.push(extension);
+      } catch {}
+    }
+    const embedded = embedCore.embedTaggedTemplates(base, registry);
+
+    for (const [packageName, supportConfig] of javascriptSupportExtensions) {
+      try {
+        const { createSupportExtension } = await requireAsyncModule(packageName);
+        extras.push(createSupportExtension(embedded, supportConfig));
+      } catch {}
+    }
+    return extras.length ? new LanguageSupport(embedded.language, [embedded.support, extras]) : embedded;
   }
 
   try {

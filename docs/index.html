@@ -25,9 +25,57 @@
   <script type="module">
     import { createEditor } from './index.js';
 
+    const doc = `import tw from 'twrnc';
+
+const sql = (s, ...v) => String.raw({ raw: s }, ...v);
+const gql = sql;
+const css = sql;
+const sksl = sql;
+const glsl = sql;
+const t = sql;
+
+function hello(who = "world") {
+  console.log(\`Hello, \${who}!\`);
+}
+
+const usersQuery = sql\`SELECT id, name FROM users WHERE active = \${true};\`;
+
+const countriesQuery = gql\`
+  query {
+    countries(filter: { continent: { eq: "EU" } }) {
+      code
+      name
+    }
+  }
+\`;
+
+const cardStyle = css\`
+  color: #e2e8f0;
+  padding: 12px;
+  border-radius: 8px;
+\`;
+
+const shader = sksl\`
+  half4 main(float2 pos) {
+    return half4(pos.x, pos.y, 0.5, 1.0);
+  }
+\`;
+
+const fragmentShader = glsl\`
+  varying vec2 vUv;
+  void main() {
+    gl_FragColor = vec4(vUv.x, vUv.y, 0.5, 1.0);
+  }
+\`;
+
+const cartMessage = t\`{count, plural, =0 {no items} one {# item} other {# items}}\`;
+
+const layout = tw\`flex-1 items-center justify-center bg-blue-500 rounded-lg p-4\`;
+`;
+
     window.editor = await createEditor({
       parent: document.body,
-      doc: `function hello(who = "world") {\n  console.log(\`Hello, \${who}!\`)\n}`,
+      doc,
       language: 'javascript',
       languageConfig: { jsx: true, typescript: true },
       extensions: ['@codemirror/autocomplete', ['@uiw/codemirror-theme-github', 'githubDark']],
