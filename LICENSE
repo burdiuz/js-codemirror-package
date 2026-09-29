@@ -1,3 +1,8 @@
+This license applies to the original source of this package (the editor facade,
+build pipeline, and module loader). The `dist/codemirror/` output additionally
+bundles compiled code from third-party CodeMirror, Lezer, and other packages,
+each retaining its own copyright and MIT license — see THIRD_PARTY_NOTICES.
+
 MIT License
 
 Copyright (c) 2024 Oleg Galaburda

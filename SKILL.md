@@ -196,6 +196,8 @@ import { registerExtension } from './index.js';
 registerExtension('@my/theme', (mod, options) => mod.myTheme(options));
 ```
 
+**Note:** `createEditor` always wires `completionKeymap` and `autocompletion()` into its baked-in setup, so `Ctrl-Space` opens the completion popup by default — requesting `'@codemirror/autocomplete'` via `extensions` is not required just for that binding. App-level shortcuts that call back out to React Native (save, run, etc.) are a different API — `registerShortcut`/`unregisterShortcut` on the [react-native-codeditor](https://github.com/burdiuz/react-native-codeditor) side, not this package.
+
 ## Supported Languages
 
 Pass any of these to `language` / `setLanguage`:
@@ -204,10 +206,44 @@ Pass any of these to `language` / `setLanguage`:
 
 Most of these factories take no arguments (`cpp`, `css`, `go`, `java`, `json`, `less`, `lezer`, `python`, `rust`, `wast`, `yaml`). The rest accept an optional config object via `languageConfig` / the second `setLanguage` argument: `angular`, `html`, `javascript` (`{ jsx, typescript }`), `jinja`, `liquid`, `markdown`, `php`, `sass`, `sql` (`SQLConfig`), `vue`, `xml` (`XMLConfig`). Check the installed package's own types for the exact shape — this list is the packages currently bundled, not a guarantee for future versions.
 
+Also pre-registered via `registerLanguage` (custom `@actualwave/codemirror-lang-*` packages, not `@codemirror/lang-*`): `sksl`, `glsl`, `icu`.
+
 Legacy modes via `loadExtension`:
 ```js
 const { swift } = await editor.loadExtension('@codemirror/legacy-modes/mode/swift');
 ```
+
+## Custom Languages and Embedded DSLs
+
+### `registerLanguage(name, packageName)`
+
+Registers a top-level language package that doesn't follow the `@codemirror/lang-{name}` convention, so it becomes usable via `language` / `setLanguage(name)`.
+
+```js
+import { registerLanguage } from './index.js';
+registerLanguage('mylang', '@my/codemirror-lang-mylang');
+```
+
+### `registerTaggedTemplate(packageName)`
+
+Mixes a nested grammar into `'javascript'` for a tagged-template DSL (`` tag`...` ``), via `parseMixed`. The package must export `createEmbedding() => { matcher, language, extension? }`. Pre-registered tags: `sql`, `graphql`, `css`, `sksl`, `glsl`, `icu` (packages `@actualwave/codemirror-lang-embed-{name}`).
+
+```js
+import { registerTaggedTemplate } from './index.js';
+registerTaggedTemplate('@my/codemirror-lang-embed-toml');
+// `` toml`key = "value"` `` now highlights inside any 'javascript' editor
+```
+
+### `registerJavascriptSupport(packageName, config)`
+
+Adds a package contributing plain extensions (completions, decorations — no nested grammar) to `'javascript'`'s support set. The package must export `createSupportExtension(jsLanguageSupport, config?) => Extension`. Pre-registered: `@actualwave/codemirror-lang-embed-tailwind`, `@actualwave/codemirror-lang-embed-react-native`.
+
+```js
+import { registerJavascriptSupport } from './index.js';
+registerJavascriptSupport('@my/codemirror-lang-embed-emojis', { setName: 'twemoji' });
+```
+
+Both `registerTaggedTemplate` and `registerJavascriptSupport` only affect editors created with `language: 'javascript'`.
 
 ## Anti-Patterns
 

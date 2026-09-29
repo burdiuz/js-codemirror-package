@@ -153,6 +153,55 @@ const editor = await createEditor({
 
 ---
 
+### `registerLanguage(name, packageName)`
+
+Registers a custom top-level language that doesn't follow the `@codemirror/lang-{name}` convention, so it can be passed to `createEditor({ language })` / `setLanguage()` by name. Pre-registered: `sksl` → `@actualwave/codemirror-lang-sksl`, `glsl` → `@actualwave/codemirror-lang-glsl`, `icu` → `@actualwave/codemirror-lang-icu-messageformat`.
+
+```js
+import { registerLanguage } from './index.js';
+
+registerLanguage('mylang', '@my/codemirror-lang-mylang');
+
+const editor = await createEditor({ language: 'mylang' });
+```
+
+---
+
+### Embedding DSLs inside `'javascript'`
+
+Two registries let you mix additional syntax into the `'javascript'` language — used for tagged-template literals like `` sql`SELECT ...` `` inside `.js`/`.tsx` source. Both are pre-populated with a set of first-party packages; you only need `registerTaggedTemplate` / `registerJavascriptSupport` to add more.
+
+#### `registerTaggedTemplate(packageName)`
+
+Adds a package providing a nested grammar for a tagged-template DSL, parsed via `parseMixed` inside `` `...` `` literals tagged with a matching function name. Each package must export `createEmbedding() => { matcher, language, extension? }`.
+
+Pre-registered: `@actualwave/codemirror-lang-embed-sql`, `-embed-graphql`, `-embed-css`, `-embed-sksl`, `-embed-glsl`, `-embed-icu-messageformat` — matching `` sql`...` ``, `` graphql`...` ``, `` css`...` ``, `` sksl`...` ``, `` glsl`...` ``, `` icu`...` `` tags respectively.
+
+```js
+import { registerTaggedTemplate, createEditor } from './index.js';
+
+registerTaggedTemplate('@my/codemirror-lang-embed-toml');
+
+const editor = await createEditor({ language: 'javascript' });
+// `` toml`key = "value"` `` inside the source now gets TOML highlighting
+```
+
+#### `registerJavascriptSupport(packageName, config)`
+
+Adds a package contributing plain CM extensions (completion sources, decorations) to the `'javascript'` language's support set, for DSLs with no grammar to parse — e.g. flat class-name token lists rather than a nested language. Each package must export `createSupportExtension(jsLanguageSupport, config?) => Extension`.
+
+Pre-registered: `@actualwave/codemirror-lang-embed-tailwind`, `@actualwave/codemirror-lang-embed-react-native` (both registered with `undefined` config by default).
+
+```js
+import { registerJavascriptSupport } from './index.js';
+
+registerJavascriptSupport('@my/codemirror-lang-embed-emojis', { setName: 'twemoji' });
+```
+
+Both registries only take effect when `language: 'javascript'` is requested — they have no effect on any other language name.
+
+---
+
 ### `requireAsyncModule(moduleName)` → `object | Promise<object>`
 
 Low-level loader. Returns the cached exports synchronously if already loaded, otherwise fetches and evaluates the module file and returns a Promise. All `createEditor` and `loadExtension` calls go through this internally.
@@ -163,11 +212,23 @@ const { javascriptLanguage } = await requireAsyncModule('@codemirror/lang-javasc
 
 ---
 
+## Built-in keybindings
+
+`createEditor` always includes CodeMirror's `closeBracketsKeymap`, `defaultKeymap`, `searchKeymap`, `historyKeymap`, `foldKeymap`, `completionKeymap`, and `lintKeymap` — this isn't configurable per call. Notably, `completionKeymap` binds `Ctrl-Space` (and `Alt-\`` on some platforms) to open the autocomplete popup by default; you don't need to request `'@codemirror/autocomplete'` via `extensions` just to get that binding, since `autocompletion()` is also always included.
+
+Host-app-level shortcuts (e.g. save, run) that need to call back out of the editor are a separate concern handled one layer up, in [react-native-codeditor](https://github.com/burdiuz/react-native-codeditor)'s `registerShortcut`/`unregisterShortcut` API — not by this package.
+
+---
+
 ## Supported languages
 
 All `@codemirror/lang-*` packages are included and loadable by name via the `language` option or `setLanguage()`:
 
 `angular`, `cpp`, `css`, `go`, `html`, `java`, `javascript`, `jinja`, `json`, `less`, `lezer`, `liquid`, `markdown`, `php`, `python`, `rust`, `sass`, `sql`, `vue`, `wast`, `xml`, `yaml`
+
+Custom packages registered by name (see `registerLanguage` above) are also loadable the same way: `sksl`, `glsl`, `icu`.
+
+Additionally, `javascript` can embed further DSLs inside tagged-template literals and its own support set — see [Embedding DSLs inside `'javascript'`](#embedding-dsls-inside-javascript) above.
 
 Legacy CodeMirror modes from `@codemirror/legacy-modes` are also available via `requireAsyncModule`:
 
@@ -284,3 +345,16 @@ Serve the `docs/` demo locally:
 npm run serve
 # opens http://localhost:3000
 ```
+
+---
+
+## License
+
+This package's own source (the editor facade, build pipeline, module loader) is
+[MIT licensed](./LICENSE), © Oleg Galaburda.
+
+`dist/codemirror/` additionally bundles compiled code from third-party projects —
+CodeMirror, Lezer, `@uiw` themes, `cm6-graphql`, `graphql`, `graphql-language-service`,
+and `@babel/runtime` — each under its own MIT license and copyright. See
+[THIRD_PARTY_NOTICES](./THIRD_PARTY_NOTICES) for the full list of licenses and
+copyright holders; it ships alongside `dist/` in the published package.
