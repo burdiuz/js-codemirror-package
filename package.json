@@ -1,6 +1,6 @@
 {
   "name": "@actualwave/codemirror-package",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "main": "dist/index.js",
   "scripts": {
     "start": "node start.js",
@@ -24,7 +24,7 @@
     "@actualwave/codemirror-lang-embed-core": "^0.1.0",
     "@actualwave/codemirror-lang-embed-css": "^0.1.0",
     "@actualwave/codemirror-lang-embed-glsl": "^0.1.0",
-    "@actualwave/codemirror-lang-embed-graphql": "^0.1.0",
+    "@actualwave/codemirror-lang-embed-graphql": "^0.1.1",
     "@actualwave/codemirror-lang-embed-icu-messageformat": "^0.1.0",
     "@actualwave/codemirror-lang-embed-react-native": "^0.1.0",
     "@actualwave/codemirror-lang-embed-sksl": "^0.1.0",
@@ -33,7 +33,7 @@
     "@actualwave/codemirror-lang-glsl": "^0.1.0",
     "@actualwave/codemirror-lang-icu-messageformat": "^0.1.0",
     "@actualwave/codemirror-lang-react-native": "^0.1.0",
-    "@actualwave/codemirror-lang-sksl": "^0.1.0",
+    "@actualwave/codemirror-lang-sksl": "^0.1.1",
     "@babel/core": "^7.15.5",
     "@babel/runtime": "^7.27.0",
     "@codemirror/autocomplete": "6.20.2",

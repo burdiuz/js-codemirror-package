@@ -117,9 +117,6 @@ const SEPARATE_PACKAGES = [
   '@codemirror/lang-xml',
   '@codemirror/lang-yaml',
 
-  // graphql grammar (dep of embed-graphql below)
-  'cm6-graphql',
-
   // custom language packages
   '@actualwave/codemirror-lang-sksl',
   '@actualwave/codemirror-lang-glsl',
