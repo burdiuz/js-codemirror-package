@@ -57,14 +57,11 @@ async function resolveExtensionSpec(spec) {
 
 /**
  * Registry mapping language name → npm package name for packages that don't
- * follow the @codemirror/lang-{name} convention. Pre-populated with known
- * custom language packages bundled in this distribution.
+ * follow the @codemirror/lang-{name} convention. Empty by default — this is a
+ * generic facade with no built-in knowledge of any specific language package;
+ * callers must register the ones they need via registerLanguage().
  */
-const languagePackages = new Map([
-  ['sksl', '@actualwave/codemirror-lang-sksl'],
-  ['glsl', '@actualwave/codemirror-lang-glsl'],
-  ['icu', '@actualwave/codemirror-lang-icu-messageformat'],
-]);
+const languagePackages = new Map();
 
 /**
  * Register a custom language package that doesn't follow the
@@ -79,18 +76,11 @@ export function registerLanguage(name, packageName) {
 
 /**
  * Packages providing tagged-template DSL embeddings for the 'javascript'
- * language (see SINGLE_FILE_PROTOTYPES.md in react-native-playground). Each
- * package must export `createEmbedding() => { matcher, language }` — see
- * @actualwave/codemirror-lang-embed-core.
+ * language. Each package must export `createEmbedding() => { matcher, language }`
+ * — see @actualwave/codemirror-lang-embed-core. Empty by default; register the
+ * embeddings a given app needs via registerTaggedTemplate().
  */
-const taggedTemplateEmbeddings = new Set([
-  '@actualwave/codemirror-lang-embed-sql',
-  '@actualwave/codemirror-lang-embed-graphql',
-  '@actualwave/codemirror-lang-embed-css',
-  '@actualwave/codemirror-lang-embed-sksl',
-  '@actualwave/codemirror-lang-embed-glsl',
-  '@actualwave/codemirror-lang-embed-icu-messageformat',
-]);
+const taggedTemplateEmbeddings = new Set();
 
 /**
  * Registers an additional tagged-template DSL embedding package to be mixed
@@ -105,18 +95,15 @@ export function registerTaggedTemplate(packageName) {
 /**
  * Packages contributing plain CM extensions (completion sources, decoration
  * ViewPlugins, etc) to the 'javascript' language's support set, for DSLs with
- * no grammar to parse — e.g. Tailwind/twrnc class names inside `` tw`...` ``,
- * which are a flat token list rather than a `parseMixed` nested language (see
- * SINGLE_FILE_PROTOTYPES.md / TODO.md item 6). Each package must export
+ * no grammar to parse — e.g. flat class-name token lists rather than a
+ * `parseMixed` nested language. Each package must export
  * `createSupportExtension(jsLanguageSupport, config?) => Extension`. Keyed by
  * package name → its config (or `undefined`), registered once up front rather
  * than threaded through every createEditor() call, matching how
- * registerTaggedTemplate works.
+ * registerTaggedTemplate works. Empty by default; register what a given app
+ * needs via registerJavascriptSupport().
  */
-const javascriptSupportExtensions = new Map([
-  ['@actualwave/codemirror-lang-embed-tailwind', undefined],
-  ['@actualwave/codemirror-lang-embed-react-native', undefined],
-]);
+const javascriptSupportExtensions = new Map();
 
 /**
  * Registers an additional package contributing support extensions (not a
@@ -149,10 +136,11 @@ function findLegacyMode(mod, name) {
 /**
  * Resolves a language name to a CodeMirror language extension.
  * Resolution order:
- *   1. Custom registry (registerLanguage / built-in overrides like sksl)
+ *   1. Custom registry (registerLanguage) — empty by default
  *   2. 'javascript' special case — wraps @codemirror/lang-javascript with
- *      tagged-template DSL embedding (sql/gql/css/styled.* — see
- *      registerTaggedTemplate)
+ *      tagged-template DSL embedding for whatever's been registered via
+ *      registerTaggedTemplate/registerJavascriptSupport (none by default) plus
+ *      whatever's passed in per-call via the embeds argument
  *   3. @codemirror/lang-{name}  (official first-class language packages)
  *   4. @codemirror/legacy-modes/mode/{name}  (wrapped with StreamLanguage.define)
  *
@@ -160,8 +148,15 @@ function findLegacyMode(mod, name) {
  * @param {object} [config] - Passed as the sole argument to the resolved factory function
  *   (e.g. { jsx: true, typescript: true } for 'javascript'). Ignored by the legacy-modes
  *   fallback, since those export StreamParser objects rather than factory functions.
+ * @param {object} [embeds] - Only used when name === 'javascript'.
+ * @param {string[]} [embeds.taggedTemplates] - Extra tagged-template embedding package
+ *   names for this call only, merged with whatever's registered via registerTaggedTemplate.
+ * @param {Array<string|[string, object]>} [embeds.javascriptSupport] - Extra javascript
+ *   support-extension packages for this call only (same spec shape as registerJavascriptSupport's
+ *   arguments — a bare package name, or a [packageName, config] tuple), merged with whatever's
+ *   registered via registerJavascriptSupport (per-call config wins on a shared package name).
  */
-async function resolveLanguageExtension(name, config) {
+async function resolveLanguageExtension(name, config, embeds = {}) {
   if (languagePackages.has(name)) {
     const mod = await requireAsyncModule(languagePackages.get(name));
     const fn = mod[name] ?? Object.values(mod).find((v) => typeof v === 'function');
@@ -169,6 +164,8 @@ async function resolveLanguageExtension(name, config) {
   }
 
   if (name === 'javascript') {
+    const { taggedTemplates = [], javascriptSupport = [] } = embeds;
+
     const [jsMod, embedCore, { LanguageSupport }] = await Promise.all([
       requireAsyncModule('@codemirror/lang-javascript'),
       requireAsyncModule('@actualwave/codemirror-lang-embed-core'),
@@ -177,7 +174,9 @@ async function resolveLanguageExtension(name, config) {
     const base = jsMod.javascript(config);
     const registry = embedCore.createTagRegistry();
     const extras = [];
-    for (const packageName of taggedTemplateEmbeddings) {
+
+    const allTaggedTemplates = new Set([...taggedTemplateEmbeddings, ...taggedTemplates]);
+    for (const packageName of allTaggedTemplates) {
       try {
         const { createEmbedding } = await requireAsyncModule(packageName);
         const { matcher, language, extension } = createEmbedding();
@@ -187,7 +186,12 @@ async function resolveLanguageExtension(name, config) {
     }
     const embedded = embedCore.embedTaggedTemplates(base, registry);
 
-    for (const [packageName, supportConfig] of javascriptSupportExtensions) {
+    const allJavascriptSupport = new Map(javascriptSupportExtensions);
+    for (const spec of javascriptSupport) {
+      const [packageName, supportConfig] = Array.isArray(spec) ? spec : [spec, undefined];
+      allJavascriptSupport.set(packageName, supportConfig);
+    }
+    for (const [packageName, supportConfig] of allJavascriptSupport) {
       try {
         const { createSupportExtension } = await requireAsyncModule(packageName);
         extras.push(createSupportExtension(embedded, supportConfig));
@@ -227,6 +231,14 @@ async function resolveLanguageExtension(name, config) {
  *   e.g. { jsx: true, typescript: true } for 'javascript'.
  * @param {Array}    [options.extensions=[]]        - Extension specs. Each item may be:
  *   a package-name string, a [packageName, options] tuple, or an already-built CM Extension.
+ * @param {object}   [options.embeds]                - Only used when language === 'javascript'.
+ *   Optional — defaults to none.
+ * @param {string[]} [options.embeds.taggedTemplates] - Extra tagged-template embedding package
+ *   names for this editor only, merged with whatever's registered globally via registerTaggedTemplate.
+ * @param {Array<string|[string, object]>} [options.embeds.javascriptSupport] - Extra javascript
+ *   support-extension packages for this editor only (a bare package name, or a
+ *   [packageName, config] tuple), merged with whatever's registered globally via
+ *   registerJavascriptSupport.
  * @param {(value: string) => void} [options.onChange] - Called with the full document string
  *   on every change. Use this to relay content back to the React Native side.
  *
@@ -238,6 +250,7 @@ export async function createEditor({
   language,
   languageConfig,
   extensions = [],
+  embeds,
   onChange,
 } = {}) {
   const [
@@ -302,7 +315,7 @@ export async function createEditor({
   const extensionCompartment = new Compartment();
 
   const [langExt, resolvedExtensions] = await Promise.all([
-    language ? resolveLanguageExtension(language, languageConfig) : Promise.resolve([]),
+    language ? resolveLanguageExtension(language, languageConfig, embeds) : Promise.resolve([]),
     Promise.all(extensions.map(resolveExtensionSpec)),
   ]);
 
@@ -350,9 +363,11 @@ export async function createEditor({
      * @param {object} [config] - Options passed to the language factory, e.g.
      *   { jsx: true, typescript: true } for 'javascript'. Must be plain serializable
      *   data — it crosses the WebView bridge as a postMessage payload.
+     * @param {object} [embeds] - Only used when name === 'javascript'; see createEditor's
+     *   options.embeds. Optional — defaults to none.
      */
-    async setLanguage(name, config) {
-      const ext = await resolveLanguageExtension(name, config);
+    async setLanguage(name, config, embeds) {
+      const ext = await resolveLanguageExtension(name, config, embeds);
       view.dispatch({ effects: languageCompartment.reconfigure(ext) });
     },
 

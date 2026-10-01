@@ -206,7 +206,7 @@ Pass any of these to `language` / `setLanguage`:
 
 Most of these factories take no arguments (`cpp`, `css`, `go`, `java`, `json`, `less`, `lezer`, `python`, `rust`, `wast`, `yaml`). The rest accept an optional config object via `languageConfig` / the second `setLanguage` argument: `angular`, `html`, `javascript` (`{ jsx, typescript }`), `jinja`, `liquid`, `markdown`, `php`, `sass`, `sql` (`SQLConfig`), `vue`, `xml` (`XMLConfig`). Check the installed package's own types for the exact shape — this list is the packages currently bundled, not a guarantee for future versions.
 
-Also pre-registered via `registerLanguage` (custom `@actualwave/codemirror-lang-*` packages, not `@codemirror/lang-*`): `sksl`, `glsl`, `icu`.
+Not pre-registered — the registry starts empty. Register custom `@actualwave/codemirror-lang-*` packages (or your own) via `registerLanguage`, e.g. `sksl`, `glsl`, `icu`.
 
 Legacy modes via `loadExtension`:
 ```js
@@ -226,7 +226,7 @@ registerLanguage('mylang', '@my/codemirror-lang-mylang');
 
 ### `registerTaggedTemplate(packageName)`
 
-Mixes a nested grammar into `'javascript'` for a tagged-template DSL (`` tag`...` ``), via `parseMixed`. The package must export `createEmbedding() => { matcher, language, extension? }`. Pre-registered tags: `sql`, `graphql`, `css`, `sksl`, `glsl`, `icu` (packages `@actualwave/codemirror-lang-embed-{name}`).
+Mixes a nested grammar into `'javascript'` for a tagged-template DSL (`` tag`...` ``), via `parseMixed`. The package must export `createEmbedding() => { matcher, language, extension? }`. Empty by default — register what you need, e.g. `@actualwave/codemirror-lang-embed-{sql,graphql,css,sksl,glsl,icu-messageformat}`.
 
 ```js
 import { registerTaggedTemplate } from './index.js';
@@ -236,7 +236,7 @@ registerTaggedTemplate('@my/codemirror-lang-embed-toml');
 
 ### `registerJavascriptSupport(packageName, config)`
 
-Adds a package contributing plain extensions (completions, decorations — no nested grammar) to `'javascript'`'s support set. The package must export `createSupportExtension(jsLanguageSupport, config?) => Extension`. Pre-registered: `@actualwave/codemirror-lang-embed-tailwind`, `@actualwave/codemirror-lang-embed-react-native`.
+Adds a package contributing plain extensions (completions, decorations — no nested grammar) to `'javascript'`'s support set. The package must export `createSupportExtension(jsLanguageSupport, config?) => Extension`. Empty by default — e.g. register `@actualwave/codemirror-lang-embed-tailwind` or `-embed-react-native` if you need them.
 
 ```js
 import { registerJavascriptSupport } from './index.js';

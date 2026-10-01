@@ -155,42 +155,40 @@ const editor = await createEditor({
 
 ### `registerLanguage(name, packageName)`
 
-Registers a custom top-level language that doesn't follow the `@codemirror/lang-{name}` convention, so it can be passed to `createEditor({ language })` / `setLanguage()` by name. Pre-registered: `sksl` → `@actualwave/codemirror-lang-sksl`, `glsl` → `@actualwave/codemirror-lang-glsl`, `icu` → `@actualwave/codemirror-lang-icu-messageformat`.
+Registers a custom top-level language that doesn't follow the `@codemirror/lang-{name}` convention, so it can be passed to `createEditor({ language })` / `setLanguage()` by name. Empty by default — this facade has no built-in knowledge of any specific language package; register whatever your app needs.
 
 ```js
-import { registerLanguage } from './index.js';
+import { registerLanguage, createEditor } from './index.js';
 
+registerLanguage('sksl', '@actualwave/codemirror-lang-sksl');
 registerLanguage('mylang', '@my/codemirror-lang-mylang');
 
-const editor = await createEditor({ language: 'mylang' });
+const editor = await createEditor({ language: 'sksl' });
 ```
 
 ---
 
 ### Embedding DSLs inside `'javascript'`
 
-Two registries let you mix additional syntax into the `'javascript'` language — used for tagged-template literals like `` sql`SELECT ...` `` inside `.js`/`.tsx` source. Both are pre-populated with a set of first-party packages; you only need `registerTaggedTemplate` / `registerJavascriptSupport` to add more.
+Two registries let you mix additional syntax into the `'javascript'` language — used for tagged-template literals like `` sql`SELECT ...` `` inside `.js`/`.tsx` source. Both are empty by default; nothing is embedded into `'javascript'` unless you register it.
 
 #### `registerTaggedTemplate(packageName)`
 
 Adds a package providing a nested grammar for a tagged-template DSL, parsed via `parseMixed` inside `` `...` `` literals tagged with a matching function name. Each package must export `createEmbedding() => { matcher, language, extension? }`.
 
-Pre-registered: `@actualwave/codemirror-lang-embed-sql`, `-embed-graphql`, `-embed-css`, `-embed-sksl`, `-embed-glsl`, `-embed-icu-messageformat` — matching `` sql`...` ``, `` graphql`...` ``, `` css`...` ``, `` sksl`...` ``, `` glsl`...` ``, `` icu`...` `` tags respectively.
-
 ```js
 import { registerTaggedTemplate, createEditor } from './index.js';
 
+registerTaggedTemplate('@actualwave/codemirror-lang-embed-sql');
 registerTaggedTemplate('@my/codemirror-lang-embed-toml');
 
 const editor = await createEditor({ language: 'javascript' });
-// `` toml`key = "value"` `` inside the source now gets TOML highlighting
+// `` sql`SELECT ...` `` and `` toml`key = "value"` `` inside the source now highlight
 ```
 
 #### `registerJavascriptSupport(packageName, config)`
 
 Adds a package contributing plain CM extensions (completion sources, decorations) to the `'javascript'` language's support set, for DSLs with no grammar to parse — e.g. flat class-name token lists rather than a nested language. Each package must export `createSupportExtension(jsLanguageSupport, config?) => Extension`.
-
-Pre-registered: `@actualwave/codemirror-lang-embed-tailwind`, `@actualwave/codemirror-lang-embed-react-native` (both registered with `undefined` config by default).
 
 ```js
 import { registerJavascriptSupport } from './index.js';
@@ -226,7 +224,7 @@ All `@codemirror/lang-*` packages are included and loadable by name via the `lan
 
 `angular`, `cpp`, `css`, `go`, `html`, `java`, `javascript`, `jinja`, `json`, `less`, `lezer`, `liquid`, `markdown`, `php`, `python`, `rust`, `sass`, `sql`, `vue`, `wast`, `xml`, `yaml`
 
-Custom packages registered by name (see `registerLanguage` above) are also loadable the same way: `sksl`, `glsl`, `icu`.
+Custom packages registered by name (see `registerLanguage` above) are also loadable the same way, e.g. `sksl`, `glsl`, `icu` — once you've registered them yourself; none are registered by default.
 
 Additionally, `javascript` can embed further DSLs inside tagged-template literals and its own support set — see [Embedding DSLs inside `'javascript'`](#embedding-dsls-inside-javascript) above.
 
