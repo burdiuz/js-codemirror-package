@@ -234,16 +234,16 @@ registerTaggedTemplate('@my/codemirror-lang-embed-toml');
 // `` toml`key = "value"` `` now highlights inside any 'javascript' editor
 ```
 
-### `registerJavascriptSupport(packageName, config)`
+### `registerSupportExtension(packageName, config)`
 
-Adds a package contributing plain extensions (completions, decorations — no nested grammar) to `'javascript'`'s support set. The package must export `createSupportExtension(jsLanguageSupport, config?) => Extension`. Empty by default — e.g. register `@actualwave/codemirror-lang-embed-tailwind` or `-embed-react-native` if you need them.
+Adds a package contributing plain extensions (completions, decorations — no nested grammar) to `'javascript'`'s support set. The package must export `createSupportExtension(languageSupport, config?) => Extension`. Empty by default — e.g. register `@actualwave/codemirror-lang-embed-tailwind` or `-embed-react-native` if you need them. Not JS-specific by name or contract — just not yet wired up for other base languages.
 
 ```js
-import { registerJavascriptSupport } from './index.js';
-registerJavascriptSupport('@my/codemirror-lang-embed-emojis', { setName: 'twemoji' });
+import { registerSupportExtension } from './index.js';
+registerSupportExtension('@my/codemirror-lang-embed-emojis', { setName: 'twemoji' });
 ```
 
-Both `registerTaggedTemplate` and `registerJavascriptSupport` only affect editors created with `language: 'javascript'`.
+Both `registerTaggedTemplate` and `registerSupportExtension` only affect editors created with `language: 'javascript'`.
 
 ## Anti-Patterns
 

@@ -186,14 +186,14 @@ const editor = await createEditor({ language: 'javascript' });
 // `` sql`SELECT ...` `` and `` toml`key = "value"` `` inside the source now highlight
 ```
 
-#### `registerJavascriptSupport(packageName, config)`
+#### `registerSupportExtension(packageName, config)`
 
-Adds a package contributing plain CM extensions (completion sources, decorations) to the `'javascript'` language's support set, for DSLs with no grammar to parse — e.g. flat class-name token lists rather than a nested language. Each package must export `createSupportExtension(jsLanguageSupport, config?) => Extension`.
+Adds a package contributing plain CM extensions (completion sources, decorations) to the `'javascript'` language's support set, for DSLs with no grammar to parse — e.g. flat class-name token lists rather than a nested language. Each package must export `createSupportExtension(languageSupport, config?) => Extension`. Not JS-specific by name or contract — currently only wired up for the `'javascript'` base language, but may extend to others later.
 
 ```js
-import { registerJavascriptSupport } from './index.js';
+import { registerSupportExtension } from './index.js';
 
-registerJavascriptSupport('@my/codemirror-lang-embed-emojis', { setName: 'twemoji' });
+registerSupportExtension('@my/codemirror-lang-embed-emojis', { setName: 'twemoji' });
 ```
 
 Both registries only take effect when `language: 'javascript'` is requested — they have no effect on any other language name.
@@ -332,6 +332,64 @@ const mobileSetup = [
   // ... all other basicSetup extensions
 ];
 ```
+
+---
+
+## Adding language modes to the package
+
+New language support is added to the package's own build pipeline (`start.js`), not at runtime —
+the package only vendors and lazily serves whatever's listed there. After editing, rebuild with
+`npm run build` (`node start.js`) and check the log: every processed package should print `ok`;
+`Failed: ...` means it couldn't be resolved from `node_modules` (check the dependency is installed)
+or converted (a CJS-transform error).
+
+### Official `@codemirror/lang-{name}` packages
+
+1. `npm install @codemirror/lang-{name}` (and its Lezer parser, e.g. `@lezer/{name}`, if it has
+   one — check the package's own dependencies).
+2. Add both to `SEPARATE_PACKAGES` in `start.js`, under the `lezer parsers` and `language packages`
+   groups respectively. **Order matters**: a package can only depend on packages listed *before*
+   it, so the Lezer parser entry must come before the language package entry.
+3. Rebuild. No changes to `index.js` are needed — `resolveLanguageExtension`'s
+   `@codemirror/lang-{name}` fallback picks up any name matching that convention automatically
+   once it's in the module map; consumers just call `createEditor({ language: 'name' })`.
+
+### Legacy modes (`@codemirror/legacy-modes`)
+
+Fully automatic — `start.js` iterates every `.cjs` file under `@codemirror/legacy-modes/mode/` and
+processes it unconditionally. There's nothing to add; bumping `@codemirror/legacy-modes` to a
+version that ships new modes picks them up on the next `npm run build`.
+
+### Custom / third-party language packages (not `@codemirror/lang-*`)
+
+For a package like `@actualwave/codemirror-lang-sksl` whose name doesn't match the convention:
+
+1. `npm install` the package, then add it to `SEPARATE_PACKAGES` under "custom language packages"
+   (after any Lezer parser or other dependency it needs).
+2. Rebuild.
+3. Consumers call `registerLanguage('sksl', '@actualwave/codemirror-lang-sksl')` themselves —
+   nothing is registered by default (see
+   [`registerLanguage`](#registerlanguagename-packagename) above). This package has no built-in
+   knowledge of any specific custom language.
+
+### Embedded DSLs (tagged-template / support-extension packages)
+
+Same build-side steps as custom languages: add the dependency, then add it to `SEPARATE_PACKAGES`
+(under "tagged-template DSL embedding" or "support-extension DSLs" — after
+`@actualwave/codemirror-lang-embed-core` if it's a tagged-template package, since that's the shared
+`parseMixed`/registry machinery they depend on). Consumers then opt in via
+`registerTaggedTemplate(packageName)` or `registerSupportExtension(packageName, config)` — see
+[Embedding DSLs inside `'javascript'`](#embedding-dsls-inside-javascript) above. Nothing is
+embedded by default.
+
+### Transitive dependencies
+
+You rarely need to hand-list every dependency of a dependency — after processing the explicit
+lists above, `start.js` scans the generated files for any `requireAsyncModule(name)` call that
+didn't resolve to a known module, resolves those too, and repeats until none are left. This is how
+`@babel/runtime` helpers get pulled in automatically. It only fails for packages Node can't resolve
+via `require.resolve` (e.g. an unusual subpath export map) — those need an explicit entry in
+`SEPARATE_PACKAGES`.
 
 ---
 

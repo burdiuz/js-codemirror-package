@@ -94,26 +94,28 @@ export function registerTaggedTemplate(packageName) {
 
 /**
  * Packages contributing plain CM extensions (completion sources, decoration
- * ViewPlugins, etc) to the 'javascript' language's support set, for DSLs with
- * no grammar to parse — e.g. flat class-name token lists rather than a
+ * ViewPlugins, etc) to a base language's support set, for DSLs with no
+ * grammar to parse — e.g. flat class-name token lists rather than a
  * `parseMixed` nested language. Each package must export
- * `createSupportExtension(jsLanguageSupport, config?) => Extension`. Keyed by
+ * `createSupportExtension(languageSupport, config?) => Extension`. Keyed by
  * package name → its config (or `undefined`), registered once up front rather
  * than threaded through every createEditor() call, matching how
  * registerTaggedTemplate works. Empty by default; register what a given app
- * needs via registerJavascriptSupport().
+ * needs via registerSupportExtension(). Currently only mixed in for the
+ * 'javascript' base language (see resolveLanguageExtension) — not JS-specific
+ * by name or contract, just not yet wired up for other base languages.
  */
-const javascriptSupportExtensions = new Map();
+const supportExtensions = new Map();
 
 /**
  * Registers an additional package contributing support extensions (not a
- * nested grammar) to the 'javascript' language.
+ * nested grammar) to a base language — currently only 'javascript'.
  *
  * @param {string} packageName - npm package name exporting createSupportExtension().
  * @param {object} [config] - Passed as createSupportExtension's second argument.
  */
-export function registerJavascriptSupport(packageName, config) {
-  javascriptSupportExtensions.set(packageName, config);
+export function registerSupportExtension(packageName, config) {
+  supportExtensions.set(packageName, config);
 }
 
 /**
@@ -139,7 +141,7 @@ function findLegacyMode(mod, name) {
  *   1. Custom registry (registerLanguage) — empty by default
  *   2. 'javascript' special case — wraps @codemirror/lang-javascript with
  *      tagged-template DSL embedding for whatever's been registered via
- *      registerTaggedTemplate/registerJavascriptSupport (none by default) plus
+ *      registerTaggedTemplate/registerSupportExtension (none by default) plus
  *      whatever's passed in per-call via the embeds argument
  *   3. @codemirror/lang-{name}  (official first-class language packages)
  *   4. @codemirror/legacy-modes/mode/{name}  (wrapped with StreamLanguage.define)
@@ -151,10 +153,10 @@ function findLegacyMode(mod, name) {
  * @param {object} [embeds] - Only used when name === 'javascript'.
  * @param {string[]} [embeds.taggedTemplates] - Extra tagged-template embedding package
  *   names for this call only, merged with whatever's registered via registerTaggedTemplate.
- * @param {Array<string|[string, object]>} [embeds.javascriptSupport] - Extra javascript
- *   support-extension packages for this call only (same spec shape as registerJavascriptSupport's
- *   arguments — a bare package name, or a [packageName, config] tuple), merged with whatever's
- *   registered via registerJavascriptSupport (per-call config wins on a shared package name).
+ * @param {Array<string|[string, object]>} [embeds.supportExtensions] - Extra support-extension
+ *   packages for this call only (same spec shape as registerSupportExtension's arguments —
+ *   a bare package name, or a [packageName, config] tuple), merged with whatever's registered
+ *   via registerSupportExtension (per-call config wins on a shared package name).
  */
 async function resolveLanguageExtension(name, config, embeds = {}) {
   if (languagePackages.has(name)) {
@@ -164,7 +166,7 @@ async function resolveLanguageExtension(name, config, embeds = {}) {
   }
 
   if (name === 'javascript') {
-    const { taggedTemplates = [], javascriptSupport = [] } = embeds;
+    const { taggedTemplates = [], supportExtensions: callSupportExtensions = [] } = embeds;
 
     const [jsMod, embedCore, { LanguageSupport }] = await Promise.all([
       requireAsyncModule('@codemirror/lang-javascript'),
@@ -186,12 +188,12 @@ async function resolveLanguageExtension(name, config, embeds = {}) {
     }
     const embedded = embedCore.embedTaggedTemplates(base, registry);
 
-    const allJavascriptSupport = new Map(javascriptSupportExtensions);
-    for (const spec of javascriptSupport) {
+    const allSupportExtensions = new Map(supportExtensions);
+    for (const spec of callSupportExtensions) {
       const [packageName, supportConfig] = Array.isArray(spec) ? spec : [spec, undefined];
-      allJavascriptSupport.set(packageName, supportConfig);
+      allSupportExtensions.set(packageName, supportConfig);
     }
-    for (const [packageName, supportConfig] of allJavascriptSupport) {
+    for (const [packageName, supportConfig] of allSupportExtensions) {
       try {
         const { createSupportExtension } = await requireAsyncModule(packageName);
         extras.push(createSupportExtension(embedded, supportConfig));
@@ -235,10 +237,10 @@ async function resolveLanguageExtension(name, config, embeds = {}) {
  *   Optional — defaults to none.
  * @param {string[]} [options.embeds.taggedTemplates] - Extra tagged-template embedding package
  *   names for this editor only, merged with whatever's registered globally via registerTaggedTemplate.
- * @param {Array<string|[string, object]>} [options.embeds.javascriptSupport] - Extra javascript
+ * @param {Array<string|[string, object]>} [options.embeds.supportExtensions] - Extra
  *   support-extension packages for this editor only (a bare package name, or a
  *   [packageName, config] tuple), merged with whatever's registered globally via
- *   registerJavascriptSupport.
+ *   registerSupportExtension.
  * @param {(value: string) => void} [options.onChange] - Called with the full document string
  *   on every change. Use this to relay content back to the React Native side.
  *
