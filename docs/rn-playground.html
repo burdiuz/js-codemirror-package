@@ -29,9 +29,16 @@
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 
+// Stub tag functions so the sample is valid JS. Embeds match tags by name only.
 const sql = (s, ...v) => String.raw({ raw: s }, ...v);
 const css = sql;
-const styled = { View: (s, ...v) => String.raw({ raw: s }, ...v) };
+const glsl = sql;
+const sksl = sql;
+const gql = sql;
+const graphql = sql; // not matched by default (only "gql" is)
+const t = sql;
+const tw = sql;
+const styled = Object.assign((C) => sql, { View: sql, Text: sql });
 
 // Try: place the cursor after "use" on a new line to see hook completion,
 // or type "<Pre" inside the JSX below to see tag-name completion, or place
@@ -55,10 +62,61 @@ export default function Counter() {
   );
 }
 
+// --- Tagged template embeds: try typing inside each template ---
+
+// CSS: properties, values, colors, units ("disp" -> display, "#" colors)
 const cardStyle = css\`
   color: #e2e8f0;
   padding: 12px;
 \`;
+const StyledBox = styled.View\`
+  background-color: tomato;
+\`;
+const StyledButton = styled(Pressable)\`
+  border-radius: 8px;
+\`;
+
+// SQL: keywords ("SEL", "FRO"), no schema configured so no table/column names
+const query = sql\`
+  SELECT id, name FROM users
+  WHERE active = 1
+  ORDER BY name
+\`;
+const partialQuery = sql\`SEL\`;
+
+// GLSL: types, qualifiers, built-ins ("vec", "mix", "gl_")
+const glslShader = glsl\`
+  precision mediump float;
+  uniform vec2 resolution;
+  void main() {
+    vec2 uv = gl_FragCoord.xy / resolution;
+    gl_FragColor = vec4(uv, 0.0, 1.0);
+  }
+\`;
+
+// SkSL: like GLSL, plus sk_FragCoord
+const skslShader = sksl\`
+  uniform float2 size;
+  half4 main(float2 coord) {
+    return half4(coord / size, 0, 1);
+  }
+\`;
+
+// ICU MessageFormat (tag "t"): argument types, plural/select snippets
+const message = t\`You have {count, plural, one {# item} other {# items}}\`;
+const gender = t\`{gender, select, male {He} female {She} other {They}} replied\`;
+
+// GraphQL: highlighting only, no suggestions without a schema
+const userQuery = gql\`
+  query User($id: ID!) {
+    user(id: $id) { id name }
+  }
+\`;
+const notMatched = graphql\`query { viewer { id } }\`; // plain string: tag not registered
+
+// Tailwind (tag "tw"): class names by prefix ("flex-", "bg-", "p-"), category coloring
+const classes = tw\`flex flex-row items-center justify-between p-4 bg-blue-500 text-white\`;
+const partialClasses = tw\`fl\`;
 
 const styles = StyleSheet.create({
   container: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -73,6 +131,20 @@ const styles = StyleSheet.create({
       doc,
       language: 'javascript',
       languageConfig: { jsx: true, typescript: true },
+      embeds: {
+        taggedTemplates: [
+          '@actualwave/codemirror-lang-embed-css',
+          '@actualwave/codemirror-lang-embed-sql',
+          '@actualwave/codemirror-lang-embed-glsl',
+          '@actualwave/codemirror-lang-embed-sksl',
+          '@actualwave/codemirror-lang-embed-icu-messageformat',
+          '@actualwave/codemirror-lang-embed-graphql',
+        ],
+        supportExtensions: [
+          '@actualwave/codemirror-lang-embed-react-native',
+          '@actualwave/codemirror-lang-embed-tailwind',
+        ],
+      },
       extensions: ['@codemirror/autocomplete', ['@uiw/codemirror-theme-github', 'githubDark']],
     });
   </script>
