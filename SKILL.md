@@ -172,7 +172,7 @@ inject(`window.editor.destroy();`);
 |--------|---------|-------------|
 | `getValue()` | `string` | Current document content |
 | `setValue(value)` | — | Replace entire document |
-| `setLanguage(name, config?)` | `Promise` | Swap language; loads module on demand. `config` is passed to the language factory, e.g. `{ jsx: true, typescript: true }` for `'javascript'` |
+| `setLanguage(name, config?, embeds?)` | `Promise` | Swap language; loads module on demand. `config` is passed to the language factory, e.g. `{ jsx: true, typescript: true }` for `'javascript'`. `embeds` (`{ taggedTemplates?, supportExtensions? }`) is only used for `'javascript'` — see Per-editor embeds below |
 | `setExtensions(specs)` | `Promise` | Replace active extensions |
 | `loadExtension(moduleName)` | `Promise<object>` | Load module, return raw exports |
 | `destroy()` | — | Destroy editor and remove from DOM |
@@ -244,6 +244,32 @@ registerSupportExtension('@my/codemirror-lang-embed-emojis', { setName: 'twemoji
 ```
 
 Both `registerTaggedTemplate` and `registerSupportExtension` only affect editors created with `language: 'javascript'`.
+
+### Per-editor embeds (highlighting + suggestions)
+
+Pass `embeds` to `createEditor` or `setLanguage` instead of registering globally; it is merged with the global registries. It must be built inside the WebView page, so it has to be plain data (package names and configs).
+
+```js
+await createEditor({
+  language: 'javascript',
+  languageConfig: { jsx: true, typescript: true },
+  embeds: {
+    taggedTemplates: ['@actualwave/codemirror-lang-embed-css', '@actualwave/codemirror-lang-embed-sql', '@actualwave/codemirror-lang-embed-graphql'],
+    supportExtensions: ['@actualwave/codemirror-lang-embed-react-native', '@actualwave/codemirror-lang-embed-tailwind'],
+  },
+});
+```
+
+A package must be in the list matching what it exports, otherwise it fails to load:
+
+| List | Exports | Packages |
+|------|---------|----------|
+| `taggedTemplates` | `createEmbedding()` — nested language (highlighting) + its suggestions | `embed-css`, `embed-sql`, `embed-glsl`, `embed-sksl`, `embed-icu-messageformat`, `embed-graphql` (highlighting only, no suggestions) |
+| `supportExtensions` | `createSupportExtension(languageSupport, config?)` — suggestions/decorations on the JS language, no nested language | `embed-tailwind`, `embed-react-native` |
+
+Tags are matched by name only: `css`/`styled`/`styled.X`/`styled(X)` → CSS, `sql`, `gql` (not `graphql`), `glsl`, `sksl`, `t` → ICU MessageFormat, `tw` → Tailwind. `embed-react-native` needs no tag (JSX, imports, `StyleSheet.create`).
+
+Suggestions need no extra setup: a language embed's suggestions come with it, and `autocompletion()` is already in the built-in setup. Only `supportExtensions` entries accept a config (`['pkg', config]`). A package that fails to load is skipped silently, so a wrong list or missing module looks like "no highlighting / no suggestions" with no error.
 
 ## Anti-Patterns
 

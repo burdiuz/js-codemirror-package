@@ -92,6 +92,8 @@ Creates and mounts a CodeMirror editor. Core modules are lazy-loaded on the firs
 | `parent` | `Element` | `document.body` | DOM element to mount into. |
 | `doc` | `string` | `''` | Initial content. |
 | `language` | `string` | — | Language name. Loads `@codemirror/lang-{name}` on demand. |
+| `languageConfig` | `object` | — | Options passed to the language factory, e.g. `{ jsx: true, typescript: true }` for `'javascript'`. |
+| `embeds` | `{ taggedTemplates?, supportExtensions? }` | — | Per-editor embeds, `'javascript'` only. See [Embedding DSLs inside `'javascript'`](#embedding-dsls-inside-javascript). |
 | `extensions` | `Array` | `[]` | Extension specs (see below). |
 | `onChange` | `(value: string) => void` | — | Called on every document change. |
 
@@ -130,7 +132,7 @@ The object returned by `createEditor`.
 | `view` | The underlying `EditorView` for direct CodeMirror access. |
 | `getValue()` | Returns current document as a string. |
 | `setValue(value)` | Replaces the entire document. |
-| `setLanguage(name)` | Swaps the active language without rebuilding editor state. |
+| `setLanguage(name, config?, embeds?)` | Swaps the active language without rebuilding editor state. `embeds` has the same shape as the `createEditor` option and is only used for `'javascript'`. |
 | `setExtensions(specs)` | Replaces the active extension set. Accepts the same spec forms as `extensions`. |
 | `loadExtension(moduleName)` | Loads a module and returns its raw exports. Use when you need internals not exposed by the registry (e.g. building a custom completion source). |
 | `destroy()` | Destroys the editor and removes it from the DOM. |
@@ -197,6 +199,55 @@ registerSupportExtension('@my/codemirror-lang-embed-emojis', { setName: 'twemoji
 ```
 
 Both registries only take effect when `language: 'javascript'` is requested — they have no effect on any other language name.
+
+#### Per-editor embeds and which list a package goes in
+
+Instead of (or in addition to) the global registries, pass `embeds` to `createEditor` or `setLanguage`. It is merged with whatever was registered globally:
+
+```js
+const editor = await createEditor({
+  language: 'javascript',
+  languageConfig: { jsx: true, typescript: true },
+  embeds: {
+    taggedTemplates: [
+      '@actualwave/codemirror-lang-embed-css',
+      '@actualwave/codemirror-lang-embed-sql',
+      '@actualwave/codemirror-lang-embed-glsl',
+      '@actualwave/codemirror-lang-embed-sksl',
+      '@actualwave/codemirror-lang-embed-icu-messageformat',
+      '@actualwave/codemirror-lang-embed-graphql',
+    ],
+    supportExtensions: [
+      '@actualwave/codemirror-lang-embed-react-native', // or ['pkg', { ...config }]
+      '@actualwave/codemirror-lang-embed-tailwind',
+    ],
+  },
+});
+```
+
+A package must go in the list matching what it exports, otherwise it fails to load:
+
+| List | Exports | Packages | Provides |
+|------|---------|----------|----------|
+| `taggedTemplates` | `createEmbedding()` | `embed-css`, `embed-sql`, `embed-glsl`, `embed-sksl`, `embed-icu-messageformat`, `embed-graphql` | Nested language (highlighting) for matching tags, plus its suggestions where the package has any (`embed-graphql` is highlighting only) |
+| `supportExtensions` | `createSupportExtension(languageSupport, config?)` | `embed-tailwind`, `embed-react-native` | Suggestions (and Tailwind class coloring) on the JS language itself; no nested language |
+
+Suggestions need no extra setup. A language embed's suggestions come with it, and `autocompletion()` is already part of `createEditor`'s built-in setup.
+
+Tags are matched by name only:
+
+| Package | Matches |
+|---------|---------|
+| `embed-css` | `` css`…` ``, `` styled`…` ``, `` styled.View`…` ``, `` styled(Button)`…` `` |
+| `embed-sql` | `` sql`…` `` |
+| `embed-graphql` | `` gql`…` `` (`graphql` is not matched) |
+| `embed-glsl` | `` glsl`…` `` |
+| `embed-sksl` | `` sksl`…` `` |
+| `embed-icu-messageformat` | `` t`…` `` |
+| `embed-tailwind` | `` tw`…` `` |
+| `embed-react-native` | no tag; works on ordinary JSX, imports and `StyleSheet.create` |
+
+Only `supportExtensions` entries can take a config (`['pkg', config]`); language embeds are created with their defaults. A package that fails to load is skipped silently, so a wrong list or a missing module shows up as "no highlighting / no suggestions" with no error. Each embed's own documentation is in [codemirror-lang-modules](https://github.com/burdiuz/codemirror-lang-modules).
 
 ---
 
