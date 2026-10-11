@@ -220,6 +220,7 @@ const editor = await createEditor({
     supportExtensions: [
       '@actualwave/codemirror-lang-embed-react-native', // or ['pkg', { ...config }]
       '@actualwave/codemirror-lang-embed-tailwind',
+      '@actualwave/codemirror-lang-js-completion',
     ],
   },
 });
@@ -230,7 +231,7 @@ A package must go in the list matching what it exports, otherwise it fails to lo
 | List | Exports | Packages | Provides |
 |------|---------|----------|----------|
 | `taggedTemplates` | `createEmbedding()` | `embed-css`, `embed-sql`, `embed-glsl`, `embed-sksl`, `embed-icu-messageformat`, `embed-graphql` | Nested language (highlighting) for matching tags, plus its suggestions where the package has any (`embed-graphql` is highlighting only) |
-| `supportExtensions` | `createSupportExtension(languageSupport, config?)` | `embed-tailwind`, `embed-react-native` | Suggestions (and Tailwind class coloring) on the JS language itself; no nested language |
+| `supportExtensions` | `createSupportExtension(languageSupport, config?)` | `embed-tailwind`, `embed-react-native`, `js-completion` | Suggestions (and Tailwind class coloring) on the JS language itself; no nested language |
 
 Suggestions need no extra setup. A language embed's suggestions come with it, and `autocompletion()` is already part of `createEditor`'s built-in setup.
 

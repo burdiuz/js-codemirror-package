@@ -1,6 +1,6 @@
 {
   "name": "@actualwave/codemirror-package",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "main": "dist/index.js",
   "scripts": {
     "start": "node start.js",
@@ -32,6 +32,7 @@
     "@actualwave/codemirror-lang-embed-tailwind": "^0.1.0",
     "@actualwave/codemirror-lang-glsl": "^0.1.0",
     "@actualwave/codemirror-lang-icu-messageformat": "^0.1.0",
+    "@actualwave/codemirror-lang-js-completion": "^0.1.0",
     "@actualwave/codemirror-lang-react-native": "^0.1.0",
     "@actualwave/codemirror-lang-sksl": "^0.1.1",
     "@babel/core": "^7.15.5",

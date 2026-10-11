@@ -28,6 +28,9 @@
     const doc = `import tw from 'twrnc';
 
 const sql = (s, ...v) => String.raw({ raw: s }, ...v);
+
+const text = '  Hello  ';
+text.trim().
 const gql = sql;
 const css = sql;
 const sksl = sql;
@@ -78,6 +81,9 @@ const layout = tw\`flex-1 items-center justify-center bg-blue-500 rounded-lg p-4
       doc,
       language: 'javascript',
       languageConfig: { jsx: true, typescript: true },
+      embeds: {
+        supportExtensions: ['@actualwave/codemirror-lang-js-completion'],
+      },
       extensions: ['@codemirror/autocomplete', ['@uiw/codemirror-theme-github', 'githubDark']],
     });
   </script>

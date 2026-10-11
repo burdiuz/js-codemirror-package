@@ -136,6 +136,7 @@ const SEPARATE_PACKAGES = [
   // support-extension DSLs (completion/decoration, no nested grammar)
   '@actualwave/codemirror-lang-embed-tailwind',
   '@actualwave/codemirror-lang-embed-react-native',
+  '@actualwave/codemirror-lang-js-completion',
 ];
 
 const toIntermediateName = (packageName) => packageName.replace(/\//g, '_');
